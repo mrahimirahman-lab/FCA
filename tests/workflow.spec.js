@@ -1,0 +1,72 @@
+import { test, expect } from '@playwright/test';
+import sharp from 'sharp';
+
+function examplePdf() {
+  const page = label => `BT /F1 22 Tf 30 250 Td (${label}) Tj ET 25 25 220 200 re S 130 25 m 130 225 l S`;
+  const one=page('GROUND FLOOR'), two=page('FIRST FLOOR');
+  const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${one.length} >>\nstream\n${one}\nendstream`,`<< /Length ${two.length} >>\nstream\n${two}\nendstream`];
+  let text='%PDF-1.4\n', offsets=[0];
+  objects.forEach((object,index) => { offsets.push(Buffer.byteLength(text));text+=`${index+1} 0 obj\n${object}\nendobj\n`; });
+  const start=Buffer.byteLength(text);text+=`xref\n0 8\n0000000000 65535 f \n${offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n ').join('\n')}\ntrailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
+  return Buffer.from(text);
+}
+
+test('PDF page selection, DAK assignment, phone layout, inspection review and export', async ({ page }, testInfo) => {
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Setiap ruang ada ceritanya.'})).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('overview.png'),fullPage:true});
+  await page.getByRole('button',{name:'Projek baharu',exact:true}).click();
+  await page.getByLabel('Nama projek').fill('Pemeriksaan Blok Pentadbiran');
+  await page.getByLabel('Kod blok').fill(testInfo.project.name==='desktop'?'D':'E');
+  await page.getByRole('button',{name:'Cipta projek'}).click();
+  await expect(page.getByRole('heading',{name:'Pelan & daftar aset',exact:true})).toBeVisible();
+  await page.locator('input[accept^="application/pdf"]').setInputFiles({name:'pelan.pdf',mimeType:'application/pdf',buffer:examplePdf()});
+  await expect(page.getByAltText('Pelan lantai B1')).toBeVisible();
+  await expect(page.getByLabel('Halaman PDF')).toHaveValue('1');
+  await page.getByLabel('Halaman PDF').selectOption('2');
+  await expect(page.getByLabel('Halaman PDF')).toHaveValue('2');
+  await page.getByRole('button',{name:'Tambah ruang',exact:true}).click();
+  await page.getByAltText('Pelan lantai B1').click({position:{x:60,y:60}});
+  await page.getByLabel('Nama ruang').fill('Pejabat Pentadbiran');
+  const dak = testInfo.project.name==='desktop'?'D B1 0002':'E B1 0002';
+  await page.getByLabel('Kod ruang (4 digit)').fill('0002');
+  await page.getByRole('button',{name:'Simpan',exact:true}).click();
+  await expect(page.locator('.room-list')).toContainText(dak);
+  await expect(page.getByLabel('Halaman PDF')).toBeDisabled();
+  await page.screenshot({path:testInfo.outputPath('plan.png'),fullPage:true});
+  await page.getByRole('button',{name:'Pemeriksaan',exact:true}).click();
+  await page.getByLabel('Ruang / nombor aset').selectOption({label:`${dak} — Pejabat Pentadbiran`});
+  const image=await sharp({create:{width:400,height:300,channels:3,background:'#ccccbb'}}).png().toBuffer();
+  await page.locator('input[type=file][accept^="image"]').first().setInputFiles({name:'kerosakan.png',mimeType:'image/png',buffer:image});
+  await expect(page.getByAltText('Bukti foto pemeriksaan')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Analisis kerosakan',exact:true})).toBeDisabled();
+  await page.getByLabel('Klasifikasi komponen').selectOption('ahu');
+  await page.getByLabel('Jenis kerosakan').fill('Retak dinding');
+  await page.getByLabel('Deskripsi kerosakan').fill('Retak menegak berhampiran bukaan pintu.');
+  await page.getByLabel('Cadangan kerja pembaikan').fill('Ukur lebar retak dan nilai puncanya sebelum menentukan pembaikan.');
+  await page.getByRole('button',{name:'Simpan pemeriksaan',exact:true}).click();
+  await expect(page.getByText('Draf — belum disahkan',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Semak / edit'}).click();
+  await page.getByLabel('Nama pemeriksa').fill('Pemeriksa Ujian');
+  await page.getByLabel('Saya telah menyemak bukti').check();
+  await page.getByRole('button',{name:'Simpan perubahan',exact:true}).click();
+  await expect(page.locator('.report-record .badge.green')).toContainText('Disahkan pemeriksa');
+  await page.reload();
+  await page.getByRole('button',{name:'Laporan',exact:true}).click();
+  // Select the project for this browser; another viewport run may have created a second one.
+  if (testInfo.project.name==='mobile') await page.getByLabel('Tukar projek').selectOption({label:'E · B1'});
+  await expect(page.locator('.report-record')).toHaveCount(1);
+  await expect(page.locator('.asset-mono')).toContainText(`${dak} 33 25 13 11 00 00 00`);
+  await page.screenshot({path:testInfo.outputPath('report.png'),fullPage:true});
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'CSV',exact:true}).click();
+  const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.csv$/);
+  await page.emulateMedia({media:'print'});
+  await expect(page.locator('.sidebar')).toBeHidden();
+  await expect(page.getByRole('heading',{name:'Pemeriksaan Blok Pentadbiran',exact:true})).toBeVisible();
+  await page.emulateMedia({media:'screen'});
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
+  expect(overflow).toBe(false);
+  expect(errors).toEqual([]);
+});
