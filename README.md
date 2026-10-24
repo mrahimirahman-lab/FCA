@@ -6,6 +6,18 @@ Aplikasi web Bahasa Melayu untuk pelan lantai, daftar aset ruang, pemeriksaan ke
 
 Prasyarat: Node.js 22.13+ (disahkan dengan Node 24) dan npm.
 
+Untuk menggunakan pada komputer sendiri tanpa Render, ikuti [LOCAL.md](LOCAL.md). Muat turun kod melalui **Code → Download ZIP** di GitHub, ekstrak, dan buka terminal dalam folder yang mengandungi `package.json`:
+
+```text
+npm ci --include=dev
+npm run build
+npm start
+```
+
+Pada penggunaan seterusnya, cukup jalankan `npm start`. Hentikan dengan Ctrl+C; rekod dan gambar yang telah disimpan kekal dalam `data/`.
+
+Untuk pembangunan dalam persekitaran Codex:
+
 ```bash
 cd /workspace/FCA
 npm ci --cache /workspace/.npm-cache
