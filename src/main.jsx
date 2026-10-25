@@ -2,11 +2,18 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownToLine, ArrowRight, Building2, Camera, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, Download, FileImage, FileText, FolderOpen, Layers3, LoaderCircle, MapPinned, Plus, ScanLine, Search, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import './style.css';
+import { projectSchema } from '../server/domain.js';
 
 async function api(url, options = {}) {
-  const response = await fetch(`/api${url}`, { ...options, headers: options.body instanceof FormData ? options.headers : { 'Content-Type': 'application/json', ...options.headers }, body: options.body && !(options.body instanceof FormData) ? JSON.stringify(options.body) : options.body });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Permintaan gagal.');
+  let response;
+  try {
+    response = await fetch(`/api${url}`, { ...options, headers: options.body instanceof FormData ? options.headers : { 'Content-Type': 'application/json', ...options.headers }, body: options.body && !(options.body instanceof FormData) ? JSON.stringify(options.body) : options.body });
+  } catch (error) {
+    throw new Error(error.name === 'TimeoutError' || error.name === 'AbortError' ? 'Permintaan mengambil masa terlalu lama. Semak senarai projek sebelum mencuba semula.' : 'Tidak dapat menghubungi pelayan FCA. Pastikan aplikasi masih berjalan, kemudian cuba semula.');
+  }
+  let result;
+  try { result = await response.json(); } catch { throw new Error('Respons pelayan tidak dapat dibaca. Mulakan semula aplikasi dan cuba lagi.'); }
+  if (!response.ok) throw Object.assign(new Error(result?.error || 'Permintaan gagal.'), { status:response.status });
   return result;
 }
 const emptyInspection = { componentCodes: null, roomId: '', photoId: '', damageType: '', description: '', remedial: '', severity: 'Sederhana', reviewed: false, inspector: '' };
@@ -23,6 +30,8 @@ function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [newProject, setNewProject] = useState(false);
+  const [projectError, setProjectError] = useState('');
+  const [projectConflict, setProjectConflict] = useState(null);
   const [projectForm, setProjectForm] = useState({ name: '', building: 'D', floor: 'B1' });
   const [roomId, setRoomId] = useState('');
   const [roomDraft, setRoomDraft] = useState(null);
@@ -39,6 +48,7 @@ function App() {
   const photoRef = useRef();
   const cameraRef = useRef();
   const pdfTask = useRef(null);
+  const projectRequest = useRef(false);
   const project = projects.find(p => p.id === projectId);
   const selectedRoom = project?.rooms.find(r => r.id === roomId);
   const records = project?.inspections || [];
@@ -54,11 +64,40 @@ function App() {
 
   function updateProject(p) { setProjects(list => list.map(item => item.id === p.id ? p : item)); }
   async function run(name, action) { if (busy) return; setBusy(name); setError(''); try { await action(); } catch(e) { setError(e.message); } finally { setBusy(''); } }
-  function chooseProject(id) {
-    if (id === projectId) return;
-    if ((photo || inspection.description) && !window.confirm('Tukar projek dan kosongkan borang pemeriksaan yang belum disimpan?')) return;
-    pdfTask.current?.destroy(); pdfTask.current = null;
+  function activateProject(id) {
+    const oldPdf=pdfTask.current;pdfTask.current=null;
+    if (oldPdf) void oldPdf.destroy().catch(()=>{});
     setProjectId(id); setRoomId(''); setSuggestions(null); setPdf(null); setPhoto(null); setAnalysis(null); setInspection({ ...emptyInspection }); setSearch(''); setAddingRoom(false);
+  }
+  function chooseProject(id) {
+    if (id === projectId) return true;
+    if ((photo || inspection.description) && !window.confirm('Tukar projek dan kosongkan borang pemeriksaan yang belum disimpan?')) return false;
+    activateProject(id);return true;
+  }
+  function openNewProject() { setProjectError('');setProjectConflict(null);setError('');setNewProject(true); }
+  function editProjectForm(key,value) { setProjectForm(current=>({...current,[key]:value}));setProjectError('');setProjectConflict(null); }
+  async function createProject(event) {
+    event.preventDefault();
+    if (projectRequest.current || busy) return;
+    setProjectError('');setProjectConflict(null);
+    const parsed=projectSchema.safeParse(projectForm);
+    if (!parsed.success) { setProjectError(parsed.error.issues[0].message);return; }
+    const input=parsed.data;
+    const existing=projects.find(p=>p.building===input.building && p.floor===input.floor);
+    if (existing) {setProjectError(`Blok ${input.building}, aras ${input.floor} sudah mempunyai projek. Buka projek sedia ada untuk meneruskan pendaftaran ruang atau pemeriksaan.`);setProjectConflict(existing);return;}
+    if ((photo || inspection.description) && !window.confirm('Cipta projek baharu dan kosongkan borang pemeriksaan yang belum disimpan?')) return;
+    projectRequest.current=true;setBusy('project');setError('');
+    try {
+      const p=await api('/projects',{method:'POST',body:input,signal:AbortSignal.timeout(15000)});
+      if (!p?.id || !Array.isArray(p.rooms) || !Array.isArray(p.inspections)) throw new Error('Maklumat projek daripada pelayan tidak lengkap. Semak senarai projek dan cuba lagi.');
+      setProjects(list=>[...list.filter(item=>item.id!==p.id),p]);
+      activateProject(p.id);setNewProject(false);setProjectForm({name:'',building:'D',floor:'B1'});setTab('plan');
+    } catch(error) {
+      setProjectError(error.message);
+      if (error.status===409) {
+        try { const latest=await api('/projects',{signal:AbortSignal.timeout(10000)});setProjects(latest);setProjectConflict(latest.find(p=>p.building===input.building && p.floor===input.floor)||null); } catch { /* Keep the original error visible and the form intact. */ }
+      }
+    } finally {projectRequest.current=false;setBusy('');}
   }
   async function uploadImage(file) { const form = new FormData(); form.append('image', file); return api('/uploads', { method: 'POST', body: form }); }
   async function savePlan(file) { const image = await uploadImage(file); const p = await api(`/projects/${projectId}/plan`, { method: 'PUT', body: { photoId: image.id } }); updateProject(p); setSuggestions(null); }
@@ -131,17 +170,17 @@ function App() {
       <main>
         {error && <div role="alert" className="alert error"><span>{error}</span><button aria-label="Tutup mesej" onClick={() => setError('')}><X size={18}/></button></div>}
         {busy && <div role="status" className="working"><LoaderCircle size={16} className="spin"/> {busy === 'ai' ? 'AI sedang menganalisis imej…' : busy === 'cad' ? 'Fail DWG sedang diproses…' : 'Sedang memproses…'}</div>}
-        <div className="page-heading no-print"><div><div className="eyebrow">PEMERIKSAAN BANGUNAN, LEBIH TERATUR</div><h1>{tab === 'overview' ? 'Setiap ruang ada ceritanya.' : tab === 'plan' ? 'Pelan & daftar aset' : tab === 'inspection' ? 'Pemeriksaan kerosakan' : 'Laporan pemeriksaan'}</h1><p>{tab === 'overview' ? 'Kenali ruang, rekod keadaan dan rancang pembaikan dalam satu aliran kerja.' : tab === 'plan' ? 'Petakan ruang pada pelan lantai dan bina daftar aset anda.' : tab === 'inspection' ? 'Hubungkan bukti foto dengan ruang dan tindakan pembaikan.' : 'Semak rekod, sahkan dapatan dan eksport hasil pemeriksaan.'}</p></div>{tab === 'overview' ? <Button className="primary" onClick={() => setNewProject(true)}><Plus size={17}/> Projek baharu</Button> : project && <span className="project-tag"><Building2 size={16}/>{project.building} <span>/</span> {project.floor}</span>}</div>
+        <div className="page-heading no-print"><div><div className="eyebrow">PEMERIKSAAN BANGUNAN, LEBIH TERATUR</div><h1>{tab === 'overview' ? 'Setiap ruang ada ceritanya.' : tab === 'plan' ? 'Pelan & daftar aset' : tab === 'inspection' ? 'Pemeriksaan kerosakan' : 'Laporan pemeriksaan'}</h1><p>{tab === 'overview' ? 'Kenali ruang, rekod keadaan dan rancang pembaikan dalam satu aliran kerja.' : tab === 'plan' ? 'Petakan ruang pada pelan lantai dan bina daftar aset anda.' : tab === 'inspection' ? 'Hubungkan bukti foto dengan ruang dan tindakan pembaikan.' : 'Semak rekod, sahkan dapatan dan eksport hasil pemeriksaan.'}</p></div>{tab === 'overview' ? <Button className="primary" onClick={openNewProject}><Plus size={17}/> Projek baharu</Button> : project && <span className="project-tag"><Building2 size={16}/>{project.building} <span>/</span> {project.floor}</span>}</div>
 
         {tab === 'overview' && <>
-          <section className="hero"><div className="hero-copy"><span className="hero-kicker"><span className="tiny-line"/> DARIPADA PELAN KE PEMBAIKAN</span><h2>Pemeriksaan yang jelas.<br/><em>Keputusan yang lebih baik.</em></h2><p>Satukan pelan lantai, nombor aset dan bukti kerosakan. Bina rekod bangunan yang mudah dirujuk, ruang demi ruang.</p><Button className="cream" onClick={() => project ? setTab('plan') : setNewProject(true)}>{project ? 'Buka pelan lantai' : 'Mulakan projek pertama'}<ArrowRight size={17}/></Button><div className="hero-foot"><ShieldCheck size={15}/> Dapatan AI disemak oleh pemeriksa</div></div><div className="hero-visual" aria-hidden="true"><div className="drawing-grid"/><div className="plan-drawing"><div className="drawing-room dr1">RUANG 01<span>B01 · L01</span></div><div className="drawing-room dr2">RUANG 02</div><div className="drawing-room dr3">RUANG 03</div><div className="drawing-room dr4">RUANG 04</div><div className="drawing-room dr5">LOBI</div><div className="drawing-room dr6">RUANG 05</div><div className="drawing-scan"/></div><div className="drawing-label"><span className="status-dot enabled"/> PELAN → ASET → PEMERIKSAAN</div><span className="drawing-north">N ↑</span></div></section>
+          <section className="hero"><div className="hero-copy"><span className="hero-kicker"><span className="tiny-line"/> DARIPADA PELAN KE PEMBAIKAN</span><h2>Pemeriksaan yang jelas.<br/><em>Keputusan yang lebih baik.</em></h2><p>Satukan pelan lantai, nombor aset dan bukti kerosakan. Bina rekod bangunan yang mudah dirujuk, ruang demi ruang.</p><Button className="cream" onClick={() => project ? setTab('plan') : openNewProject()}>{project ? 'Buka pelan lantai' : 'Mulakan projek pertama'}<ArrowRight size={17}/></Button><div className="hero-foot"><ShieldCheck size={15}/> Dapatan AI disemak oleh pemeriksa</div></div><div className="hero-visual" aria-hidden="true"><div className="drawing-grid"/><div className="plan-drawing"><div className="drawing-room dr1">RUANG 01<span>B01 · L01</span></div><div className="drawing-room dr2">RUANG 02</div><div className="drawing-room dr3">RUANG 03</div><div className="drawing-room dr4">RUANG 04</div><div className="drawing-room dr5">LOBI</div><div className="drawing-room dr6">RUANG 05</div><div className="drawing-scan"/></div><div className="drawing-label"><span className="status-dot enabled"/> PELAN → ASET → PEMERIKSAAN</div><span className="drawing-north">N ↑</span></div></section>
           <div className="stats-grid">{[{ label: 'Projek aras', value: projects.length, icon: Building2, note: 'Bangunan & aras didaftarkan' }, { label: 'Ruang berdaftar', value: rooms.length, icon: MapPinned, note: project ? `${reviewedRooms} ruang telah disemak` : 'Mula dengan pelan lantai' }, { label: 'Rekod pemeriksaan', value: records.length, icon: ClipboardCheck, note: 'Bukti foto & dapatan kerosakan' }, { label: 'Disahkan pemeriksa', value: records.filter(i => i.reviewed).length, icon: CheckCheck, note: 'Sedia untuk rujukan laporan' }].map(({label,value,icon: Icon,note}) => <div className="stat-card" key={label}><div className="stat-top"><span>{label}</span><Icon size={19}/></div><strong>{value.toString().padStart(2,'0')}</strong><small>{note}</small></div>)}</div>
           <div className="section-title"><div><h2>Aliran kerja anda</h2><p>Tiga langkah untuk rekod pemeriksaan yang lengkap.</p></div><span className="text-muted">MULA DI SINI</span></div>
-          <div className="workflow-grid">{[{ number: '01', icon: FileImage, title: 'Petakan pelan lantai', text: 'Muat naik DWG, PDF atau gambar. Kenal pasti ruang dengan AI atau tandakan secara manual.', target: 'plan', action: 'Urus pelan' }, { number: '02', icon: ScanLine, title: 'Rekod & analisis kerosakan', text: 'Ambil foto di tapak. Semak jenis kerosakan, deskripsi dan cadangan pembaikan.', target: 'inspection', action: 'Buat pemeriksaan' }, { number: '03', icon: FileText, title: 'Semak & hasilkan laporan', text: 'Sahkan dapatan pemeriksaan. Eksport daftar atau cetak laporan bersama bukti foto.', target: 'report', action: 'Lihat laporan' }].map(({number,icon: Icon,title,text,target,action}) => <button className="workflow-card" key={number} onClick={() => project ? setTab(target) : setNewProject(true)}><div className="workflow-top"><span className="icon-tile"><Icon size={22}/></span><span className="step-number">{number}</span></div><h3>{title}</h3><p>{text}</p><span className="card-link">{action}<ArrowRight size={15}/></span></button>)}</div>
+          <div className="workflow-grid">{[{ number: '01', icon: FileImage, title: 'Petakan pelan lantai', text: 'Muat naik DWG, PDF atau gambar. Kenal pasti ruang dengan AI atau tandakan secara manual.', target: 'plan', action: 'Urus pelan' }, { number: '02', icon: ScanLine, title: 'Rekod & analisis kerosakan', text: 'Ambil foto di tapak. Semak jenis kerosakan, deskripsi dan cadangan pembaikan.', target: 'inspection', action: 'Buat pemeriksaan' }, { number: '03', icon: FileText, title: 'Semak & hasilkan laporan', text: 'Sahkan dapatan pemeriksaan. Eksport daftar atau cetak laporan bersama bukti foto.', target: 'report', action: 'Lihat laporan' }].map(({number,icon: Icon,title,text,target,action}) => <button className="workflow-card" key={number} onClick={() => project ? setTab(target) : openNewProject()}><div className="workflow-top"><span className="icon-tile"><Icon size={22}/></span><span className="step-number">{number}</span></div><h3>{title}</h3><p>{text}</p><span className="card-link">{action}<ArrowRight size={15}/></span></button>)}</div>
           <div className="overview-bottom"><div className="panel recent-panel"><div className="panel-heading"><h2>Pemeriksaan terkini</h2><button className="text-button" onClick={() => setTab('report')}>Lihat semua <ArrowRight size={14}/></button></div>{records.length ? records.slice(0,3).map(i => <button className="record-row" key={i.id} onClick={() => selectInspection(i)}><img src={`/uploads/${i.photoId}.png`} alt="Foto kerosakan"/><div><strong>{i.damageType}</strong><small>{roomCode(rooms.find(r => r.id === i.roomId))} · {date(i.createdAt)}</small></div><span className={`badge ${severityClass(i.severity)}`}>{i.severity}</span><ChevronRight size={17}/></button>) : <div className="empty-inline"><ClipboardCheck size={29}/><div><strong>Belum ada rekod pemeriksaan</strong><p>Rekod pertama anda akan dipaparkan di sini.</p></div></div>}</div><div className="tip-card"><span className="tip-label"><CircleHelp size={17}/> NOTA PEMERIKSA</span><h3>Bukti yang baik,<br/>dapatan yang lebih tepat.</h3><p>Ambil satu foto keseluruhan dan satu foto dekat. Pastikan pencahayaan mencukupi serta kerosakan kelihatan jelas.</p></div></div>
         </>}
 
-        {!project && tab !== 'overview' && <div className="panel big-empty"><FolderOpen size={42}/><h2>Cipta projek untuk bermula</h2><p>Daftarkan bangunan dan aras sebelum memuat naik pelan atau pemeriksaan.</p><Button className="primary" onClick={() => setNewProject(true)}><Plus size={17}/> Projek baharu</Button></div>}
+        {!project && tab !== 'overview' && <div className="panel big-empty"><FolderOpen size={42}/><h2>Cipta projek untuk bermula</h2><p>Daftarkan bangunan dan aras sebelum memuat naik pelan atau pemeriksaan.</p><Button className="primary" onClick={openNewProject}><Plus size={17}/> Projek baharu</Button></div>}
 
         {project && tab === 'plan' && <>
           <div className="alert info"><CircleHelp size={17}/><span>Kod lokasi ruang: <strong>{project.building} {project.floor} 0001</strong> (blok · aras · ruang). Kod DAK lengkap menambah tujuh peringkat kod komponen pada rekod pemeriksaan.</span></div>
@@ -176,7 +215,7 @@ function App() {
         <footer className="page-footer no-print"><span>FCA <span className="footer-dot">·</span> Building Condition Assessment</span><span>Direka untuk pemeriksaan yang lebih teratur.</span></footer>
       </main>
     </div>
-    {newProject && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget && !busy) setNewProject(false); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="project-title"><div className="modal-heading"><span className="icon-tile"><Building2 size={23}/></span><button aria-label="Tutup" onClick={() => setNewProject(false)} disabled={Boolean(busy)}><X size={22}/></button></div><div className="eyebrow">LANGKAH PERTAMA</div><h2 id="project-title">Daftarkan projek anda.</h2><p>Satu projek mewakili satu pelan bagi satu aras bangunan.</p><form onSubmit={e => { e.preventDefault(); run('project',async () => { const p = await api('/projects',{method:'POST',body:projectForm}); setProjects(list => [...list,p]); chooseProject(p.id); setNewProject(false); setProjectForm({name:'',building:'D',floor:'B1'}); setTab('plan'); }); }}><label>Nama projek<input autoFocus required maxLength={120} placeholder="Contoh: Pemeriksaan Blok Pentadbiran" value={projectForm.name} onChange={e => setProjectForm({...projectForm,name:e.target.value})}/></label><div className="field-grid"><label>Kod blok<input required maxLength={3} pattern="[A-Za-z]{1,3}" placeholder="D" value={projectForm.building} onChange={e => setProjectForm({...projectForm,building:e.target.value})}/></label><label>Kod aras<input required maxLength={2} pattern="([A-Za-z][0-9]|[0-9]{2})" placeholder="B1 atau 04" value={projectForm.floor} onChange={e => setProjectForm({...projectForm,floor:e.target.value})}/></label></div><p className="form-note">Struktur DAK: kod blok (1–3 huruf), aras (B1 atau 04) dan ruang (4 digit). Tujuh peringkat kod komponen ditambah semasa pemeriksaan.</p><Button className="primary full-width" type="submit">Cipta projek <ArrowRight size={17}/></Button></form></section></div>}
+    {newProject && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget && !busy) setNewProject(false); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="project-title"><div className="modal-heading"><span className="icon-tile"><Building2 size={23}/></span><button aria-label="Tutup" onClick={() => setNewProject(false)} disabled={Boolean(busy)}><X size={22}/></button></div><div className="eyebrow">LANGKAH PERTAMA</div><h2 id="project-title">Daftarkan projek anda.</h2><p>Satu projek mewakili satu pelan bagi satu aras bangunan.</p><form noValidate onSubmit={createProject} aria-busy={busy === 'project'}>{projectError && <div role="alert" className="alert error project-form-error"><span>{projectError}</span></div>}{projectConflict && <button type="button" className="button" disabled={Boolean(busy)} onClick={() => {if (chooseProject(projectConflict.id)) {setNewProject(false);setProjectError('');setProjectConflict(null);setTab('plan');}}}><FolderOpen size={16}/> Buka projek sedia ada</button>}<label>Nama projek<input autoFocus required maxLength={120} placeholder="Contoh: Pemeriksaan Blok Pentadbiran" value={projectForm.name} onChange={e => editProjectForm('name',e.target.value)}/></label><div className="field-grid"><label>Kod blok<input required maxLength={3} pattern="[A-Za-z]{1,3}" placeholder="D" value={projectForm.building} onChange={e => editProjectForm('building',e.target.value)}/></label><label>Kod aras<input required maxLength={2} pattern="([A-Za-z][0-9]|[0-9]{2})" placeholder="B1 atau 04" value={projectForm.floor} onChange={e => editProjectForm('floor',e.target.value)}/></label></div><p className="form-note">Struktur DAK: kod blok (1–3 huruf), aras (B1 atau 04) dan ruang (4 digit). Tujuh peringkat kod komponen ditambah semasa pemeriksaan.</p><Button className="primary full-width" type="submit">{busy === 'project' ? <><LoaderCircle size={17} className="spin"/> Menyimpan projek…</> : <>Cipta projek <ArrowRight size={17}/></>}</Button></form></section></div>}
   </div>;
 }
 

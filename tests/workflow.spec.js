@@ -22,6 +22,8 @@ test('PDF page selection, DAK assignment, phone layout, inspection review and ex
   await page.getByLabel('Kod blok').fill(testInfo.project.name==='desktop'?'D':'E');
   await page.getByRole('button',{name:'Cipta projek'}).click();
   await expect(page.getByRole('heading',{name:'Pelan & daftar aset',exact:true})).toBeVisible();
+  const activeProjectLabel=testInfo.project.name==='desktop'?'Projek aktif':'Tukar projek';
+  const activeProjectId=await page.getByLabel(activeProjectLabel).inputValue();
   await page.locator('input[accept^="application/pdf"]').setInputFiles({name:'pelan.pdf',mimeType:'application/pdf',buffer:examplePdf()});
   await expect(page.getByAltText('Pelan lantai B1')).toBeVisible();
   await expect(page.getByLabel('Halaman PDF')).toHaveValue('1');
@@ -55,8 +57,8 @@ test('PDF page selection, DAK assignment, phone layout, inspection review and ex
   await expect(page.locator('.report-record .badge.green')).toContainText('Disahkan pemeriksa');
   await page.reload();
   await page.getByRole('button',{name:'Laporan',exact:true}).click();
-  // Select the project for this browser; another viewport run may have created a second one.
-  if (testInfo.project.name==='mobile') await page.getByLabel('Tukar projek').selectOption({label:'E · B1'});
+  // Select this test's project explicitly; other scenarios also create projects.
+  await page.getByLabel(activeProjectLabel).selectOption(activeProjectId);
   await expect(page.locator('.report-record')).toHaveCount(1);
   await expect(page.locator('.asset-mono')).toContainText(`${dak} 33 25 13 11 00 00 00`);
   await page.screenshot({path:testInfo.outputPath('report.png'),fullPage:true});

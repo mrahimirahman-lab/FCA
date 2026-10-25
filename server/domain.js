@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const blockCode = z.string().trim().toUpperCase().regex(/^[A-Z]{1,3}$/, 'Kod blok: 1–3 huruf, contohnya D.');
 const floorCode = z.string().trim().toUpperCase().regex(/^(?:[A-Z][0-9]|[0-9]{2})$/, 'Kod aras: dua aksara, contohnya B1 atau 04.');
-export const projectSchema = z.object({ name: z.string().trim().min(1).max(120), building: blockCode, floor: floorCode });
+export const projectSchema = z.object({ name: z.string().trim().min(1,'Sila masukkan nama projek.').max(120,'Nama projek maksimum 120 aksara.'), building: blockCode, floor: floorCode });
 export const boundsSchema = z.object({ x: z.number().min(0).max(100), y: z.number().min(0).max(100), width: z.number().positive().max(100), height: z.number().positive().max(100) }).refine(b => b.x + b.width <= 100.01 && b.y + b.height <= 100.01, 'Sempadan ruang mesti berada dalam pelan.');
 export const roomNumberSchema = z.string().regex(/^[0-9]{4}$/, 'Kod ruang mesti empat digit, contohnya 0002.');
 export const componentCodesSchema = z.array(z.string().regex(/^[0-9]{2}$/, 'Setiap peringkat komponen mesti dua digit.')).length(7, 'DAK mempunyai tujuh peringkat kod komponen.').nullable().default(null);

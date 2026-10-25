@@ -76,7 +76,21 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 ## AI — pilihan
 
-Salin `.env.example` kepada `.env` jika `.env` belum wujud. Isi `INSPECTION_AI_API_KEY` secara peribadi pada komputer anda, kemudian mulakan semula aplikasi. Pada Windows, pastikan nama fail benar-benar `.env`, bukan `.env.txt`. Jangan muat naik fail ini ke GitHub atau kongsi nilainya dalam chat.
+Kaedah AI yang disediakan menggunakan OpenAI API. Caj API berasingan daripada langganan ChatGPT; semak bil/kredit API sebelum membuat analisis.
+
+1. Buka https://platform.openai.com/api-keys, log masuk dan cipta kunci API untuk akaun/projek anda. Pastikan bil atau kredit API tersedia mengikut keperluan akaun.
+2. Hentikan FCA dengan Ctrl+C dalam Command Prompt. Pastikan terminal masih berada dalam folder yang mengandungi `package.json`.
+3. Jalankan arahan berikut. Arahan pertama mengekalkan `.env` sedia ada:
+
+   ```bat
+   if not exist .env copy .env.example .env
+   notepad .env
+   ```
+
+4. Dalam Notepad, isi nilai selepas `INSPECTION_AI_API_KEY=` dengan kunci anda sendiri. Model lalai boleh dibiarkan sebagai `INSPECTION_AI_MODEL=gpt-4.1`. Simpan dengan Ctrl+S dan tutup Notepad. Pastikan nama fail benar-benar `.env`, bukan `.env.txt`.
+5. Jalankan `npm start` semula dan muat semula halaman aplikasi. Status AI dikonfigurasi menunjukkan kunci telah dibaca, bukan bahawa kunci, kuota atau analisis telah disahkan oleh penyedia. Cuba satu analisis pelan yang dibenarkan dan semak hasilnya.
+
+Jangan muat naik `.env` ke GitHub, kongsi nilainya dalam chat atau masukkan kunci ke kod frontend. Nilai hanya diperlukan pada komputer yang menjalankan pelayan FCA.
 
 Model lalai ialah `gpt-4.1`. Tanpa kunci, daftar ruang dan pemeriksaan manual boleh digunakan. Kehadiran kunci sahaja tidak menjamin kuota atau analisis berjaya. Foto dihantar kepada penyedia apabila anda memilih analisis AI.
 
@@ -86,6 +100,7 @@ Model lalai ialah `gpt-4.1`. Tanpa kunci, daftar ruang dan pemeriksaan manual bo
 - **Port 3001 sedang digunakan / EADDRINUSE:** aplikasi mungkin sudah berjalan dalam terminal lain. Gunakan sesi itu atau hentikannya dengan Ctrl+C sebelum mula semula.
 - **Pelayar tidak dapat menyambung:** pastikan `npm start` masih berjalan tanpa ralat dan gunakan pelayar pada komputer yang sama. Jika `PORT` ditukar dalam `.env`, gunakan port tersebut.
 - **Diminta kata laluan:** `FCA_ACCESS_PASSWORD` telah ditetapkan dalam `.env` atau persekitaran. Gunakan nama pengguna `inspector` (atau `FCA_ACCESS_USER` yang ditetapkan) dan kata laluan anda.
+- **Cipta projek memaparkan blok/aras sudah didaftarkan:** keunikan projek berdasarkan gabungan kod blok dan aras, bukan nama projek. Gunakan **Buka projek sedia ada** atau pilih projek tersebut dalam senarai untuk meneruskan kerja pada aras sama. Untuk aras berlainan, gunakan kod aras sebenar yang lain.
 
 ## Menggunakan telefon
 
