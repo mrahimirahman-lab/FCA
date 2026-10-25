@@ -1,0 +1,45 @@
+import {test,expect} from '@playwright/test';
+import sharp from 'sharp';
+
+test('local AI readiness can refresh and both plan and photo actions work without cloud keys',async({page,request},info)=>{
+  const building=info.project.name==='desktop'?'LA':'LB';
+  const response=await request.post('/api/projects',{data:{name:'Ollama UI test',building,floor:'03'}});expect(response.status()).toBe(201);const p=await response.json();
+  const png=await sharp({create:{width:400,height:400,channels:3,background:'#ffffff'}}).png().toBuffer();
+  const upload=await request.post('/api/uploads',{multipart:{image:{name:'plan.png',mimeType:'image/png',buffer:png}}});expect(upload.status()).toBe(201);const image=await upload.json();
+  expect((await request.put(`/api/projects/${p.id}/plan`,{data:{photoId:image.id}})).status()).toBe(200);
+  let ready=false;
+  await page.route('**/api/health',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,provider:'ollama',model:'qwen2.5vl:3b',aiEnabled:ready,analysisTimeoutMs:600000,aiStatus:ready?'ready':'unavailable',aiMessage:ready?'Ollama dapat dihubungi dan model vision tersedia.':'Ollama tidak dapat dihubungi. Buka aplikasi Ollama.'})}));
+  await page.goto('/');
+  await page.getByLabel(info.project.name==='desktop'?'Projek aktif':'Tukar projek').selectOption(p.id);
+  await page.getByRole('button',{name:'Pelan & daftar aset',exact:true}).click();
+  await expect(page.locator('.ai-notice')).toContainText('AI tempatan belum bersedia');
+  await expect(page.getByRole('button',{name:'Analisis pelan',exact:true})).toBeDisabled();
+  await expect(page.locator('.ai-notice')).not.toContainText('kunci penyedia AI');
+  ready=true;await page.getByRole('button',{name:'Semak sambungan Ollama'}).click();
+  await expect(page.locator('.ai-sidebar')).toContainText('AI tempatan tersedia');
+  await expect(page.getByRole('button',{name:'Analisis pelan',exact:true})).toBeEnabled();
+  const candidate={rooms:[{name:'Ruang tempatan',bounds:{x:10,y:10,width:30,height:30},confidence:.6}],notes:'Respons ujian terkawal, bukan inferens model sebenar.'};
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  await page.route(`**/api/projects/${p.id}/analyze/plan`,async route=>{await gate;return route.fulfill({contentType:'application/json',body:JSON.stringify(candidate)});});
+  await page.getByRole('button',{name:'Analisis pelan',exact:true}).click();
+  await expect(page.locator('.analysis-loading')).toContainText('Model tempatan sedang memproses imej');release();
+  await page.getByRole('button',{name:'Import untuk semakan'}).click();
+  await expect(page.locator('.room-list')).toContainText('Ruang tempatan');
+  const saved=(await(await request.get('/api/projects')).json()).find(project=>project.id===p.id);const room=saved.rooms[0];
+  await page.getByRole('button',{name:'Pemeriksaan',exact:true}).click();
+  await page.getByLabel('Ruang / nombor aset').selectOption(room.id);
+  await page.locator('input[type=file][accept^="image"]').first().setInputFiles({name:'photo.png',mimeType:'image/png',buffer:png});
+  await expect(page.getByAltText('Bukti foto pemeriksaan')).toBeVisible();
+  await expect(page.locator('.ai-inspection-box')).toContainText('Model vision tempatan');
+  let attempts=0;
+  await page.route(`**/api/projects/${p.id}/analyze/damage`,route=>{
+    attempts++;
+    return attempts===1?route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Ollama ujian terhenti. Buka semula.'})}):route.fulfill({contentType:'application/json',body:JSON.stringify({damageType:'Retak ujian',description:'Dapatan ujian untuk semakan.',remedial:'Periksa di tapak.',severity:'Sederhana',confidence:.6,limitations:'Respons ujian terkawal.'})});
+  });
+  await page.getByRole('button',{name:'Analisis kerosakan',exact:true}).click();
+  await expect(page.locator('.ai-inspection-box').getByRole('alert')).toContainText('Ollama ujian terhenti');
+  await page.getByRole('button',{name:'Analisis kerosakan',exact:true}).click();
+  await expect(page.getByLabel('Jenis kerosakan')).toHaveValue('Retak ujian');
+  await expect(page.getByLabel('Cadangan kerja pembaikan')).toHaveValue('Periksa di tapak.');
+  await expect(page.getByLabel('Saya telah menyemak bukti')).not.toBeChecked();
+});

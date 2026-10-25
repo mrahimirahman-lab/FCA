@@ -7,6 +7,7 @@
     "dev": "concurrently -k -n api,web \"node --watch server/index.js\" \"vite --host 127.0.0.1\"",
     "build": "vite build",
     "start": "node server/index.js",
+    "ai:local": "node scripts/use-local-ai.js",
     "test": "node --test tests/*.test.js",
     "test:e2e": "npm run build && playwright test"
   },

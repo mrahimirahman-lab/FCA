@@ -7,6 +7,9 @@
 @import '@fontsource/manrope/700.css';
 @import '@fontsource/manrope/800.css';
 
+.ai-notice .local-model-label{margin:8px 0 12px}.local-model-label code{font-size:10px;background:#e9efdf;padding:2px 5px;border-radius:3px}.ai-notice .button{margin-top:4px}
+.ai-inspection-box .damage-ai-error{margin:16px 0 0}
+
 .plan-ai-status{padding:13px 21px;border-top:1px solid #e8eddf;background:#fafbf7}.plan-ai-status>p{font-size:10px;color:#849474}.analysis-loading{display:flex;gap:11px;align-items:center;color:#68864d}.analysis-loading strong{display:block;font-size:12px;font-weight:550}.analysis-loading small{display:block;font-size:10px;line-height:1.8;margin-top:5px;color:#869776}.analysis-result{scroll-margin-top:25px}.analysis-result:focus{outline:2px solid #b1c77e;outline-offset:3px}.analysis-result.error{border-color:#e8c8bd}.analysis-result.empty{border-color:#ddcfaa}.analysis-result-body{padding:20px 22px}.analysis-result-body .alert{margin-bottom:14px}.analysis-result-body>p{font-size:11px}.analysis-result-body>.button{margin-top:18px}@media(max-width:600px){.plan-ai-status{padding:13px 17px}.analysis-loading strong{font-size:11px}.analysis-loading small{font-size:9px}.analysis-result{scroll-margin-top:15px}}
 
 .cad-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 20px;background:#f5f8ef;color:#698052;border-bottom:1px solid #e8eddf}.cad-toolbar>strong{font-size:11px;font-weight:500;overflow-wrap:anywhere;min-width:0}.cad-toolbar>.button{margin-left:auto}.cad-notice{display:flex;align-items:flex-start;gap:9px;padding:12px 20px;background:#fcf8ed;border-bottom:1px solid #eee8d6;color:#9b874e;font-size:10px;line-height:1.8}.cad-notice>svg{margin-top:2px}@media(max-width:600px){.cad-toolbar{padding:12px 17px;gap:8px}.cad-toolbar>strong{max-width:180px}.cad-notice{padding:12px 17px;font-size:9px}}

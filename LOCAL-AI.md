@@ -1,0 +1,84 @@
+# AI tempatan dengan Ollama pada Windows
+
+FCA boleh menggunakan model vision pada komputer sendiri melalui Ollama. Mod ini tidak memerlukan kredit OpenAI dan tidak beralih secara automatik kepada OpenAI jika model tempatan gagal. Sambungan model dihadkan kepada alamat loopback pada komputer yang sama. Model yang dilaporkan sebagai model jauh/cloud dan model tanpa keupayaan vision ditolak.
+
+Pemasangan runtime dan muat turun model memerlukan Internet serta beberapa GB ruang disk. Pemprosesan menggunakan RAM, GPU/CPU dan elektrik komputer. Model tempatan boleh memberi hasil kurang tepat daripada model awan; setiap nama ruang, sempadan, jenis kerosakan dan remedial work mesti disemak.
+
+## Pilihan permulaan
+
+Untuk komputer pengguna dengan **RAM 32 GB, Intel i5-14500HX dan NVIDIA RTX 4060 Laptop 8 GB**, model permulaan yang dipilih ialah **`qwen2.5vl:3b`**. Ia model vision yang lebih ringan berbanding varian 7B. Saiz ini ialah cadangan permulaan, bukan jaminan kelajuan, ketepatan atau penggunaan penuh GPU. Ollama menentukan offload berdasarkan perkakasan, driver, model dan memori yang tersedia.
+
+Lihat model dan syarat lesennya di https://ollama.com/library/qwen2.5vl.
+
+## 1. Pasang Ollama dan model
+
+1. Muat turun pemasang Windows daripada https://ollama.com/download/windows.
+2. Pasang dan buka aplikasi Ollama. Biarkannya berjalan di latar belakang.
+3. Buka Command Prompt baharu dan jalankan:
+
+   ```bat
+   ollama --version
+   ollama pull qwen2.5vl:3b
+   ```
+
+4. Tunggu muat turun selesai. Semak:
+
+   ```bat
+   ollama list
+   ```
+
+   Nama `qwen2.5vl:3b` perlu ada dalam senarai. Jika `ollama` tidak dikenali, tutup dan buka semula Command Prompt selepas pemasangan.
+
+Jangan pilih tag `:cloud` atau model yang dihantar kepada pelayan jauh untuk mod tempatan ini.
+
+## 2. Kemas kini kod FCA
+
+Jika salinan FCA anda belum mempunyai arahan `ai:local`, kemas kini menggunakan **Code → Download ZIP** dari https://github.com/mrahimirahman-lab/FCA. Hentikan FCA lama, sandarkan `data/` dan `.env`, ekstrak ZIP ke folder baharu dan pindahkan `data/` serta `.env` anda. Ikut [LOCAL.md](LOCAL.md) bagi langkah Windows terperinci.
+
+Dalam folder baharu yang mengandungi `package.json`, buka Command Prompt. Jalankan satu demi satu:
+
+```bat
+npm ci --include=dev
+npm run build
+npm run ai:local
+npm start
+```
+
+`npm run ai:local` memilih tetapan berikut:
+
+```dotenv
+INSPECTION_AI_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5vl:3b
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_TIMEOUT_SECONDS=600
+```
+
+Arahan ini mencipta sandaran `.env.backup-…` jika tetapan sedia ada berubah, mengekalkan tetapan data/port/kata laluan dan kunci OpenAI yang sedia ada, serta tidak mencetak nilai rahsia. Simpan sandaran `.env` secara peribadi. Kunci OpenAI yang dikekalkan tidak digunakan apabila penyedia ialah `ollama`. Anda juga boleh menetapkan empat nilai tersebut secara manual dalam `.env` tanpa menukar tetapan lain.
+
+## 3. Semak sambungan melalui aplikasi
+
+1. Buka FCA pada pelayar komputer yang sama seperti biasa.
+2. Pada **Pelan & daftar aset**, semak kotak **AI tempatan · Ollama**. Tekan **Semak sambungan Ollama** selepas memulakan Ollama atau selesai memuat turun model.
+3. Aplikasi menyemak model melalui metadata Ollama sebelum mengaktifkan analisis. Status sedia bermaksud Ollama dapat dicapai dan model menyokong imej; ia belum mengesahkan ketepatan atau bahawa inferens sebenar sudah berjaya.
+4. Cuba **satu** analisis pelan. Panggilan pertama mungkin mengambil beberapa minit untuk memuatkan model. Semak cadangan dan pilih **Import untuk semakan** sebelum ruang dimasukkan ke daftar.
+5. Cuba satu foto pemeriksaan melalui **Analisis kerosakan**. Semak dan edit dapatan sebelum mengesahkan atau menghasilkan laporan.
+
+Jika pelan sudah mempunyai ruang berdaftar, butang analisis semula pelan disekat bagi mengelakkan kod aset berganda. Pemeriksaan foto bagi ruang sedia ada masih tersedia.
+
+## Prestasi dan masalah biasa
+
+- **Ollama tidak dapat dihubungi:** buka aplikasi Ollama dan tekan semak sambungan. Jika ia belum dimulakan oleh aplikasi, `ollama serve` boleh dijalankan dalam terminal berasingan. Jika port sudah digunakan, servis mungkin sudah berjalan; jangan mulakan salinan kedua.
+- **Model belum tersedia:** tunggu `ollama pull qwen2.5vl:3b` selesai dan semak `ollama list`.
+- **Model tidak menyokong imej:** gunakan model vision yang betul dan kemas kini Ollama. Model teks sahaja tidak dapat membaca pelan atau foto.
+- **Lambat:** semasa analisis berjalan, buka Command Prompt lain dan jalankan `ollama ps`. Lajur PROCESSOR menunjukkan penggunaan GPU/CPU. Bagi masalah GPU, rujuk panduan Ollama dan driver NVIDIA untuk komputer anda. Tutup aplikasi lain yang menggunakan banyak RAM/VRAM.
+- **Tamat masa:** had lalai 600 saat boleh diubah melalui `OLLAMA_TIMEOUT_SECONDS`, antara 30 hingga 1800, kemudian mulakan semula FCA. Cuba satu aras/kawasan pelan yang lebih kecil. Jangan jalankan beberapa inferens berat serentak.
+- **Jawapan/koordinat tidak sah:** hasil ditolak dan tiada rekod baharu disimpan. Cuba imej lebih jelas atau tandakan ruang secara manual. Tiada respons AI palsu digunakan untuk menggantikan kegagalan.
+- **Masih tertera OpenAI:** pastikan anda memulakan FCA daripada folder yang telah dikemas kini, menjalankan `npm run ai:local`, dan memulakan semula FCA. Pembolehubah persekitaran Windows yang telah ditetapkan secara global boleh mengatasi `.env`.
+
+Untuk kembali ke OpenAI, tetapkan `INSPECTION_AI_PROVIDER=openai` dan sediakan kunci/kredit API yang sah; mulakan semula FCA.
+
+## Bukti pengesahan dan batasannya
+
+Pengesahan pembangunan merangkumi kontrak HTTP Ollama melalui pelayan ujian loopback: metadata vision, imej PNG, output JSON berstruktur, analisis pelan dan kerosakan, import/persistence, ralat, model jauh/teks ditolak serta tiada penghantaran kunci awan. Ujian pelayar memeriksa status sambungan dan aliran pengguna menggunakan respons terkawal.
+
+Inferens model Ollama sebenar pada Windows/GPU pengguna **belum disahkan**. Runtime Ollama dan model tidak dipasang oleh aplikasi secara automatik. Ketepatan serta masa respons perlu dinilai pada komputer dan imej sebenar anda selepas pemasangan. Dokumentasi kontrak API rasmi: https://github.com/ollama/ollama/blob/main/docs/api.md.

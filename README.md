@@ -73,6 +73,12 @@ Pembaca ialah komponen CLI berasingan dalam `tools/dwg-reader/`, menggunakan `@m
 
 ## Mengaktifkan AI
 
+Pilih penyedia melalui `INSPECTION_AI_PROVIDER`: `openai` (lalai bagi pemasangan lama) atau `ollama` (tempatan). Untuk RAM 32 GB / RTX 4060 Laptop 8 GB, cadangan permulaan ialah Ollama dengan `qwen2.5vl:3b`; lihat [LOCAL-AI.md](LOCAL-AI.md). Arahan `npm run ai:local` memilih penyedia/model tempatan, membuat sandaran `.env` apabila berubah dan mengekalkan tetapan lain. Model/runtime perlu dipasang berasingan. Mod Ollama hanya menghantar imej kepada pelayan loopback tempatan dan tidak jatuh balik kepada OpenAI.
+
+Dalam mod Ollama, semakan kesediaan mengesahkan sambungan, model tersedia dan capability vision. Model cloud/remote, destinasi di luar komputer ini dan pengalihan HTTP ditolak. PNG dikecilkan secara berkadar sehingga sisi maksimum 1600 piksel sebelum inferens tempatan. Timeout lalai 600 saat, suhu 0, konteks 8192 dan output JSON berstruktur digunakan; keluaran masih diperiksa dengan skema yang sama. Kapasiti model kecil dan penskalaan imej boleh menjejaskan butiran pelan, jadi semakan manusia tetap diperlukan.
+
+Langkah berikut ialah untuk **mod OpenAI**:
+
 Kunci belum disediakan secara lalai. Salin `.env.example` kepada `.env` **tanpa menimpa fail sedia ada**, kemudian tetapkan `INSPECTION_AI_API_KEY` secara selamat pada pelayan. Pembolehubah `OPENAI_API_KEY` yang sudah disuntik juga boleh digunakan. Jangan komit kunci.
 
 - Penyedia: OpenAI Chat Completions melalui `https://api.openai.com/v1/chat/completions`.
@@ -87,7 +93,7 @@ Kunci belum disediakan secara lalai. Salin `.env.example` kepada `.env` **tanpa 
 
 Rekod disimpan di `data/database.json`; imej di `data/uploads/`; DWG asal di `data/cad/`. Imej dinormalkan kepada PNG, diputar mengikut orientasi dan dikecilkan sehingga 2400 piksel; metadata asal dibuang. Folder `data/`, fail `.env` dan binaan diabaikan oleh Git. Sandarkan keseluruhan `data/` bersama sebelum pemindahan atau naik taraf. Jangan jalankan lebih daripada satu proses API terhadap folder data yang sama.
 
-Untuk hosting percubaan, perlindungan kata laluan bersama tersedia melalui `FCA_ACCESS_USER` dan `FCA_ACCESS_PASSWORD`. Server memerlukan kata laluan apabila `HOST` ditetapkan kepada antara muka luar seperti `0.0.0.0`. Lihat [HOSTING.md](HOSTING.md) dan `render.yaml` untuk Render Web Service dengan disk kekal dan HTTPS. Versi ini belum mempunyai akaun individu, pemisahan pengguna, pangkalan data berbilang pengguna, penyegerakan luar talian atau audit perubahan. Akses kamera telefon memerlukan HTTPS; kawalan pilih/ambil foto bergantung pada pelayar dan peranti. HEIC perlu ditukar kepada JPG/PNG terlebih dahulu. Panggilan AI sebenar hanya boleh disahkan selepas kelayakan tersedia.
+Untuk hosting percubaan, perlindungan kata laluan bersama tersedia melalui `FCA_ACCESS_USER` dan `FCA_ACCESS_PASSWORD`. Server memerlukan kata laluan apabila `HOST` ditetapkan kepada antara muka luar seperti `0.0.0.0`. Lihat [HOSTING.md](HOSTING.md) dan `render.yaml` untuk Render Web Service dengan disk kekal dan HTTPS. Versi ini belum mempunyai akaun individu, pemisahan pengguna, pangkalan data berbilang pengguna, penyegerakan luar talian atau audit perubahan. Akses kamera telefon memerlukan HTTPS; kawalan pilih/ambil foto bergantung pada pelayar dan peranti. HEIC perlu ditukar kepada JPG/PNG terlebih dahulu. Inferens AI sebenar perlu diuji selepas penyedia dan model yang dipilih tersedia.
 
 Had: DWG/PDF 25 MB, imej 20 MB pada API, 60 juta piksel semasa nyahkod imej. OCR/pengecaman ruang ialah cadangan visual, bukan pengiraan keluasan ukur atau tafsiran BIM. Import DWG tidak secara automatik menjadikan setiap poligon sebagai ruang atau menetapkan klasifikasi komponen DAK.
 

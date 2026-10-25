@@ -7,13 +7,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
 import { projectSchema, roomSchema, roomNumberSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
-import { analyzeImage } from './ai.js';
+import { analyzeConfiguredImage, providerSettings, providerHealth } from './ai-provider.js';
 import { convertDwg } from './cad.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5 } });
 const cadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 0 } });
 const idSchema = z.string().uuid();
-export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('data'), aiKey = process.env.INSPECTION_AI_API_KEY || process.env.OPENAI_API_KEY, aiModel = process.env.INSPECTION_AI_MODEL || 'gpt-4.1', accessUser = process.env.FCA_ACCESS_USER || 'inspector', accessPassword = process.env.FCA_ACCESS_PASSWORD || '', analyze = analyzeImage } = {}) {
+export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('data'), aiKey = process.env.INSPECTION_AI_API_KEY || process.env.OPENAI_API_KEY, aiModel = process.env.INSPECTION_AI_MODEL || 'gpt-4.1', aiProvider = process.env.INSPECTION_AI_PROVIDER || 'openai', ollamaModel=process.env.OLLAMA_MODEL || 'qwen2.5vl:3b', ollamaUrl=process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434', ollamaTimeoutSeconds=process.env.OLLAMA_TIMEOUT_SECONDS || 600, accessUser = process.env.FCA_ACCESS_USER || 'inspector', accessPassword = process.env.FCA_ACCESS_PASSWORD || '', analyze = analyzeConfiguredImage } = {}) {
+  const aiSettings=providerSettings({provider:aiProvider,key:aiKey,model:aiModel,localModel:ollamaModel,localUrl:ollamaUrl,localTimeoutSeconds:ollamaTimeoutSeconds});
   fs.mkdirSync(path.join(dataDir, 'uploads'), { recursive: true });
   const dbPath = path.join(dataDir, 'database.json');
   let db = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { projects: [], uploads: [] };
@@ -38,7 +39,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
   app.use('/uploads', express.static(path.join(dataDir, 'uploads'), { fallthrough: false, dotfiles: 'deny' }));
   const project = req => { const p = db.projects.find(p => p.id === req.params.id); if (!p) throw Object.assign(new Error('Projek tidak ditemui.'), { status: 404 }); return p; };
   const photo = id => { idSchema.parse(id); const item = db.uploads.find(u => u.id === id); if (!item) throw Object.assign(new Error('Imej tidak ditemui.'), { status: 404 }); return item; };
-  app.get('/api/health', (_req,res) => res.json({ ok: true, aiEnabled: Boolean(aiKey), model: aiModel }));
+  app.get('/api/health', async (_req,res) => res.json({ ok:true,...await providerHealth(aiSettings) }));
   app.get('/api/projects', (_req,res) => res.json(db.projects));
   app.post('/api/projects', (req,res) => {
     const input = projectSchema.parse(req.body);
@@ -141,7 +142,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     const room = p.rooms.find(r => r.id === req.body.roomId);
     if (kind === 'damage' && !room) throw Object.assign(new Error('Pilih ruang pemeriksaan.'), { status: 400 });
     aiBusy = true;
-    try { const image = fs.readFileSync(path.join(dataDir,'uploads',`${item.id}.png`)); res.json(await analyze({ kind, image, key: aiKey, model: aiModel, roomName: room?.name })); }
+    try { const image = fs.readFileSync(path.join(dataDir,'uploads',`${item.id}.png`)); res.json(await analyze({ kind, image, key: aiKey, model: aiSettings.model, settings:aiSettings, roomName: room?.name })); }
     finally { aiBusy = false; }
   });
   app.use('/api', (_req,res) => res.status(404).json({ error: 'Laluan API tidak ditemui.' }));

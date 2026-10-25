@@ -10,7 +10,7 @@ import { cleanCadSvg } from '../server/cad.js';
 
 async function fixture(t, options = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(),'fca-test-'));
-  const start = () => new Promise(resolve => { const server = createApp({dataDir,aiKey:'',...options}).listen(0,'127.0.0.1',() => resolve(server)); });
+  const start = () => new Promise(resolve => { const server = createApp({dataDir,aiProvider:'openai',aiKey:'',...options}).listen(0,'127.0.0.1',() => resolve(server)); });
   let server = await start();
   t.after(async () => { await new Promise(resolve => server.close(resolve)); fs.rmSync(dataDir,{recursive:true,force:true}); });
   const request = async (url, method = 'GET', body, headers = {}) => { const response = await fetch(`http://127.0.0.1:${server.address().port}/api${url}`, {method,headers: body instanceof FormData ? headers : {'Content-Type':'application/json',...headers},body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)}); return {status:response.status,data:await response.json()}; };

@@ -1,6 +1,6 @@
 # Jalankan FCA pada komputer sendiri
 
-Render tidak diperlukan untuk cara ini. Kod, rekod pemeriksaan dan gambar disimpan pada komputer anda. Pemasangan pertama memerlukan Internet. Pemeriksaan manual tidak memerlukan kunci AI; analisis AI masih memerlukan sambungan Internet, kunci dan kuota penyedia.
+Render tidak diperlukan untuk cara ini. Kod, rekod pemeriksaan dan gambar disimpan pada komputer anda. Pemasangan pertama memerlukan Internet. Pemeriksaan manual tidak memerlukan kunci AI. Analisis boleh menggunakan Ollama tempatan selepas muat turun model, atau OpenAI API dengan sambungan Internet, kunci dan kredit API.
 
 ## 1. Pasang Node.js
 
@@ -76,7 +76,9 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 ## AI — pilihan
 
-Kaedah AI yang disediakan menggunakan OpenAI API. Caj API berasingan daripada langganan ChatGPT; semak bil/kredit API sebelum membuat analisis.
+Untuk AI tempatan tanpa kredit OpenAI, ikuti [LOCAL-AI.md](LOCAL-AI.md). Pasang Ollama, muat turun `qwen2.5vl:3b`, kemudian gunakan `npm run ai:local` dan mulakan semula FCA. Sambungan sebenar dan keupayaan vision model diperiksa sebelum analisis diaktifkan.
+
+Langkah berikut ialah untuk pilihan OpenAI API. Caj API berasingan daripada langganan ChatGPT; semak bil/kredit API sebelum membuat analisis.
 
 1. Buka https://platform.openai.com/api-keys, log masuk dan cipta kunci API untuk akaun/projek anda. Pastikan bil atau kredit API tersedia mengikut keperluan akaun.
 2. Hentikan FCA dengan Ctrl+C dalam Command Prompt. Pastikan terminal masih berada dalam folder yang mengandungi `package.json`.
