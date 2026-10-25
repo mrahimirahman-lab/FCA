@@ -8,8 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
 import { projectSchema, roomSchema, roomNumberSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
 import { analyzeImage } from './ai.js';
+import { convertDwg } from './cad.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5 } });
+const cadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 0 } });
 const idSchema = z.string().uuid();
 export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('data'), aiKey = process.env.INSPECTION_AI_API_KEY || process.env.OPENAI_API_KEY, aiModel = process.env.INSPECTION_AI_MODEL || 'gpt-4.1', accessUser = process.env.FCA_ACCESS_USER || 'inspector', accessPassword = process.env.FCA_ACCESS_PASSWORD || '', analyze = analyzeImage } = {}) {
   fs.mkdirSync(path.join(dataDir, 'uploads'), { recursive: true });
@@ -56,6 +58,32 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     const id = randomUUID(); const metadata = await sharp(buffer).metadata();
     const item = { id, url: `/uploads/${id}.png`, width: metadata.width, height: metadata.height };
     fs.writeFileSync(path.join(dataDir,'uploads',`${id}.png`), buffer); db.uploads.push(item); persist(); res.status(201).json(item);
+  });
+  let cadBusy = false;
+  app.post('/api/projects/:id/cad', cadUpload.single('drawing'), async (req,res) => {
+    const p=project(req);
+    if (p.rooms.length) throw Object.assign(new Error('Projek sudah mempunyai ruang. Cipta projek aras baharu untuk pelan lain.'),{status:409});
+    if (!req.file || !/\.dwg$/i.test(req.file.originalname)) throw Object.assign(new Error('Pilih fail AutoCAD berformat .dwg.'),{status:400});
+    if (cadBusy) throw Object.assign(new Error('Satu fail DWG sedang diproses. Cuba sebentar lagi.'),{status:429});
+    cadBusy=true;
+    try {
+      const converted=await convertDwg(req.file.buffer);
+      if (p.rooms.length) throw Object.assign(new Error('Ruang telah ditambah semasa pemprosesan. Pelan asal dikekalkan.'),{status:409});
+      const id=randomUUID();
+      const name=req.file.originalname.replace(/[\x00-\x1f\x7f]/g,'').slice(0,180);
+      const cad={sourceId:id,name,version:converted.version,space:'Model Space',entityCount:converted.entityCount,skipped:converted.skipped,decodeWarnings:converted.decodeWarnings};
+      const item={id,url:`/uploads/${id}.png`,width:converted.width,height:converted.height,cad};
+      fs.mkdirSync(path.join(dataDir,'cad'),{recursive:true});
+      fs.writeFileSync(path.join(dataDir,'cad',`${id}.dwg`),req.file.buffer);
+      fs.writeFileSync(path.join(dataDir,'uploads',`${id}.png`),converted.png);
+      db.uploads.push(item);p.plan=item;persist();res.status(201).json(p);
+    } finally {cadBusy=false;}
+  });
+  app.get('/api/projects/:id/cad/source',(req,res)=>{
+    const p=project(req);
+    if (!p.plan?.cad) throw Object.assign(new Error('Projek ini tidak mempunyai fail DWG asal.'),{status:404});
+    idSchema.parse(p.plan.cad.sourceId);
+    res.download(path.resolve(dataDir,'cad',`${p.plan.cad.sourceId}.dwg`),p.plan.cad.name);
   });
   app.put('/api/projects/:id/plan', (req,res) => {
     const p = project(req); const image = photo(req.body.photoId);

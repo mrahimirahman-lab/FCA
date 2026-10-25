@@ -6,6 +6,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { createApp } from '../server/app.js';
 import { analyzeImage } from '../server/ai.js';
+import { cleanCadSvg } from '../server/cad.js';
 
 async function fixture(t, options = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(),'fca-test-'));
@@ -28,6 +29,41 @@ test('hosting password protects application, records and images while health che
   assert.equal((await f.request('/health','GET',undefined,auth)).data.aiEnabled,true);
   assert.equal((await f.request('/projects','GET',undefined,auth)).status,200);
   assert.equal((await f.request('/projects','GET',undefined,{Authorization:'Basic '+Buffer.from('inspector:incorrect').toString('base64')})).status,401);
+});
+
+test('actual AutoCAD 2000 and 2018 DWG imports preserve source, geometry and project data',async t=>{
+  const f=await fixture(t);const p=await f.project();
+  for (const name of ['2000-Polyline','2018-Polyline','2018-Text']) {
+    const bytes=fs.readFileSync(new URL(`./fixtures/dwg/${name}.dwg`,import.meta.url));
+    const form=new FormData();form.append('drawing',new Blob([bytes],{type:'application/acad'}),`${name}.dwg`);
+    const result=await f.request(`/projects/${p.id}/cad`,'POST',form);
+    assert.equal(result.status,201,JSON.stringify(result.data));
+    const plan=result.data.plan;assert.equal(plan.cad.name,`${name}.dwg`);assert.ok(plan.cad.entityCount>0);
+    assert.equal(plan.cad.version,name.startsWith('2000')?'AC1015':'AC1032');
+    const preview=await fetch(f.origin()+plan.url);assert.equal(preview.status,200);
+    const png=Buffer.from(await preview.arrayBuffer());const pixels=await sharp(png).stats();
+    assert.ok(pixels.channels[0].stdev>1,'Rendered drawing must contain visible geometry or text');
+    const original=await fetch(f.origin()+`/api/projects/${p.id}/cad/source`);
+    assert.deepEqual(Buffer.from(await original.arrayBuffer()),bytes);
+  }
+  const before=(await f.request('/projects')).data[0];
+  const invalid=new FormData();invalid.append('drawing',new Blob(['not a real DWG']),'invalid.dwg');
+  assert.equal((await f.request(`/projects/${p.id}/cad`,'POST',invalid)).status,400);
+  assert.deepEqual((await f.request('/projects')).data[0],before,'Failed import must preserve the existing plan');
+  const corrupt=new FormData();corrupt.append('drawing',new Blob([Buffer.concat([Buffer.from('AC1032'),Buffer.alloc(250)])]),'corrupt.dwg');
+  assert.equal((await f.request(`/projects/${p.id}/cad`,'POST',corrupt)).status,422);
+  const added=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Ruang CAD',bounds:{x:0,y:0,width:20,height:20}}]});
+  assert.equal(added.status,201);assert.equal(added.data.rooms[0].code,'D B1 0001');
+  const replacement=new FormData();replacement.append('drawing',new Blob([fs.readFileSync(new URL('./fixtures/dwg/2018-Polyline.dwg',import.meta.url))]),'replacement.dwg');
+  assert.equal((await f.request(`/projects/${p.id}/cad`,'POST',replacement)).status,409);
+  await f.restart();assert.deepEqual((await f.request('/projects')).data[0],added.data);
+});
+
+test('CAD rasterization strips active markup and external resource references',async()=>{
+  const svg=cleanCadSvg('<svg viewBox="0 0 100 100"><script>alert(1)</script><image href="https://example.com/x"/><use href="https://example.com/y"/><g onclick="bad()"><path d=""/><line x1="0" y1="0" x2="100" y2="100" stroke="white"/><text x="1" y="2">A &amp; B</text></g></svg>');
+  assert.ok(!svg.includes('<script'));assert.ok(!svg.includes('<image'));assert.ok(!svg.includes('https://'));assert.ok(!svg.includes('onclick'));
+  assert.ok(svg.includes('<line'));assert.ok(svg.includes('A &amp; B'));assert.ok(svg.includes('width="2400"'));
+  assert.ok((await sharp(Buffer.from(svg)).png().toBuffer()).length>0,'Empty CAD attributes must remain valid SVG/XML');
 });
 
 test('floor plan → stable assets → reviewed inspection → persistence',async t => {

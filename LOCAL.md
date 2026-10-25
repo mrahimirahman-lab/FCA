@@ -54,10 +54,22 @@ Untuk berhenti, kembali ke terminal dan tekan **Ctrl+C**. Dalam Command Prompt W
 
 Jika anda mengemas kini kod atau menukar dependencies, jalankan semula `npm ci --include=dev` dan `npm run build` sebelum memulakan aplikasi. Jangan padam folder data semasa kemas kini.
 
+## Mengemas kini daripada ZIP GitHub tanpa kehilangan data
+
+1. Hentikan aplikasi lama dengan Ctrl+C.
+2. Sandarkan keseluruhan folder `data/` daripada folder aplikasi lama. Jika anda mempunyai `.env`, simpan fail itu secara peribadi juga.
+3. Muat turun ZIP terkini menggunakan **Code → Download ZIP** di GitHub dan ekstrak ke **folder baharu**, contohnya `Documents/FCA-terkini`.
+4. Salin folder `data/` lama ke dalam folder baharu, bersebelahan `package.json`. Jika menggunakan `.env`, salin fail itu juga; jangan gantikannya dengan `.env.example`. Jika anda menetapkan `FCA_DATA_DIR`, terus gunakan lokasi data tersebut.
+5. Buka Command Prompt dalam folder baharu. Jalankan `npm ci --include=dev`, kemudian `npm run build` dan `npm start`.
+6. Buka aplikasi dan pastikan projek/rekod lama masih kelihatan. Kekalkan folder lama dan sandaran sehingga semakan selesai.
+
+Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, sehingga 25 MB. Pilih fail dan tunggu paparan 2D Model Space selesai, semak hasilnya, kemudian tambah ruang. **Fail asal** memuat turun DWG yang disimpan. Paparan DWG dijana pada komputer anda tanpa penukaran awan; XREF, objek 3D, hatch, SHX atau sesetengah dimensi mungkin tiada atau berbeza. Fail asal DWG turut disimpan dalam folder `data/cad/`; sertakannya dalam sandaran.
+
 ## Rekod, gambar dan sandaran
 
 - Rekod: `data/database.json`.
 - Gambar dan imej halaman pelan: `data/uploads/`.
+- DWG asal jika diimport: `data/cad/`.
 - Folder `data/` dicipta secara automatik apabila aplikasi berjalan. Lokasi lalai ini terpakai apabila `FCA_DATA_DIR` tidak ditetapkan.
 - Untuk sandaran yang konsisten, hentikan aplikasi dahulu, kemudian salin **keseluruhan folder `data/`** ke lokasi sandaran.
 - Jangan jalankan dua salinan API terhadap folder data yang sama.

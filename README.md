@@ -36,7 +36,7 @@ API dan binaan web dilayan pada port 3001, terikat kepada `127.0.0.1`. Semak kes
 ## Aliran kerja
 
 1. Cipta projek untuk satu bangunan dan aras. Pasangan kod bangunan–aras mestilah unik.
-2. Muat naik PDF atau imej. Bagi PDF, pilih halaman yang mewakili aras tersebut **sebelum** menambah ruang. Satu projek menggunakan satu halaman pelan; cipta projek aras lain untuk halaman lain.
+2. Muat naik DWG, PDF atau imej. DWG dibaca secara tempatan sebagai paparan 2D Model Space; semak hasil penukaran sebelum menanda ruang. Bagi PDF, pilih halaman yang mewakili aras tersebut **sebelum** menambah ruang. Satu projek menggunakan satu paparan pelan; cipta projek aras lain untuk halaman atau pelan lain.
 3. Tambah ruang dengan klik pada pelan, atau analisis dengan AI dan import cadangan. Edit nama, sempadan peratus dan pengesahan ruang.
 4. Pilih ruang, ambil atau muat naik foto, isi dapatan secara manual atau gunakan analisis AI. Semak jenis kerosakan, deskripsi, keutamaan dan remedial work.
 5. Masukkan nama pemeriksa dan sahkan rekod. Rekod boleh disimpan sebagai draf dan diedit kemudian melalui laporan.
@@ -61,6 +61,16 @@ Satu pratetap daripada rujukan disediakan: `33` HVAC Specific Products and Equip
 
 Menukar pelan selepas ruang didaftarkan ditolak supaya pautan aset tidak tersasar.
 
+## Fail AutoCAD DWG
+
+Fail `.dwg` sehingga 25 MB boleh dipilih melalui butang muat naik pelan yang sama. Pembaca berjalan pada pelayan Node tempatan anda, tanpa AutoCAD atau perkhidmatan penukaran awan. Pemasangan `npm ci --include=dev` memasang pembaca WASM bersama aplikasi; tiada pemasangan Chocolatey atau alat binaan C++ tambahan diperlukan untuk pembaca DWG ini.
+
+Paparan yang dihasilkan ialah raster 2D **Model Space**, hitam putih sehingga 2400 piksel pada sisi terpanjang. Fail asal disimpan dalam `data/cad/` dan boleh dimuat turun menggunakan **Fail asal**. Paparan PNG disimpan dalam `data/uploads/` dan digunakan untuk penandaan ruang serta analisis AI jika diaktifkan. DWG asal tidak dihantar kepada penyedia AI oleh proses import.
+
+Sokongan ini bukan pengganti AutoCAD. Paper Space/viewport, XREF, objek 3D atau tersuai, hatch, SHX, dimensi tertentu dan beberapa transformasi blok boleh tiada atau berbeza. Layer off/frozen dan entiti tidak kelihatan dikecualikan. Semak hasil sebelum menanda ruang. Fail yang rosak, Model Space kosong atau tidak boleh dirender akan ditolak dengan mesej; pelan sedia ada dikekalkan. Jika perlu, eksport PDF daripada AutoCAD sebagai pilihan lain. DWG besar memerlukan RAM yang mencukupi; penukaran mempunyai had masa 45 saat dan hanya satu import diproses pada satu masa.
+
+Pembaca ialah komponen CLI berasingan dalam `tools/dwg-reader/`, menggunakan `@mlightcad/libredwg-web` 0.8.2 / GNU LibreDWG (GPL v3). Lesen dan pautan kod sumber disertakan di folder komponen. Ia menghasilkan SVG melalui fail sementara; pelayan menyaring SVG dan menukarnya kepada PNG, tanpa menyampaikan SVG aktif kepada pelayar. Ujian menggunakan DWG binari sebenar format AutoCAD 2000 dan 2018 bagi polyline dan teks. Keserasian setiap fail pengguna dan pelaksanaan pada Windows belum diuji secara langsung dalam persekitaran pembangunan Linux ini.
+
 ## Mengaktifkan AI
 
 Kunci belum disediakan secara lalai. Salin `.env.example` kepada `.env` **tanpa menimpa fail sedia ada**, kemudian tetapkan `INSPECTION_AI_API_KEY` secara selamat pada pelayan. Pembolehubah `OPENAI_API_KEY` yang sudah disuntik juga boleh digunakan. Jangan komit kunci.
@@ -74,11 +84,11 @@ Kunci belum disediakan secara lalai. Salin `.env.example` kepada `.env` **tanpa 
 
 ## Data dan batasan versi awal
 
-Rekod disimpan di `data/database.json`; imej di `data/uploads/`. Imej dinormalkan kepada PNG, diputar mengikut orientasi dan dikecilkan sehingga 2400 piksel; metadata asal dibuang. Folder `data/`, fail `.env` dan binaan diabaikan oleh Git. Sandarkan keseluruhan `data/` bersama sebelum pemindahan atau naik taraf. Jangan jalankan lebih daripada satu proses API terhadap folder data yang sama.
+Rekod disimpan di `data/database.json`; imej di `data/uploads/`; DWG asal di `data/cad/`. Imej dinormalkan kepada PNG, diputar mengikut orientasi dan dikecilkan sehingga 2400 piksel; metadata asal dibuang. Folder `data/`, fail `.env` dan binaan diabaikan oleh Git. Sandarkan keseluruhan `data/` bersama sebelum pemindahan atau naik taraf. Jangan jalankan lebih daripada satu proses API terhadap folder data yang sama.
 
 Untuk hosting percubaan, perlindungan kata laluan bersama tersedia melalui `FCA_ACCESS_USER` dan `FCA_ACCESS_PASSWORD`. Server memerlukan kata laluan apabila `HOST` ditetapkan kepada antara muka luar seperti `0.0.0.0`. Lihat [HOSTING.md](HOSTING.md) dan `render.yaml` untuk Render Web Service dengan disk kekal dan HTTPS. Versi ini belum mempunyai akaun individu, pemisahan pengguna, pangkalan data berbilang pengguna, penyegerakan luar talian atau audit perubahan. Akses kamera telefon memerlukan HTTPS; kawalan pilih/ambil foto bergantung pada pelayar dan peranti. HEIC perlu ditukar kepada JPG/PNG terlebih dahulu. Panggilan AI sebenar hanya boleh disahkan selepas kelayakan tersedia.
 
-Had: PDF 25 MB di pelayar, imej 20 MB pada API, 60 juta piksel semasa nyahkod. OCR/pengecaman ruang ialah cadangan visual, bukan pengiraan keluasan ukur atau tafsiran CAD/BIM.
+Had: DWG/PDF 25 MB, imej 20 MB pada API, 60 juta piksel semasa nyahkod imej. OCR/pengecaman ruang ialah cadangan visual, bukan pengiraan keluasan ukur atau tafsiran BIM. Import DWG tidak secara automatik menjadikan setiap poligon sebagai ruang atau menetapkan klasifikasi komponen DAK.
 
 ## Pengesahan
 

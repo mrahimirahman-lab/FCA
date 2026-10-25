@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import sharp from 'sharp';
+import fs from 'node:fs';
 
 function examplePdf() {
   const page = label => `BT /F1 22 Tf 30 250 Td (${label}) Tj ET 25 25 220 200 re S 130 25 m 130 225 l S`;
@@ -68,5 +69,42 @@ test('PDF page selection, DAK assignment, phone layout, inspection review and ex
   await page.emulateMedia({media:'screen'});
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
   expect(overflow).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('DWG upload, original download and room coding work on desktop and phone layouts',async({page},testInfo)=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/');
+  await page.getByRole('button',{name:'Projek baharu',exact:true}).click();
+  await page.getByLabel('Nama projek').fill('Pelan AutoCAD');
+  const building=testInfo.project.name==='desktop'?'A':'B';
+  await page.getByLabel('Kod blok').fill(building);await page.getByLabel('Kod aras').fill('04');
+  await page.getByRole('button',{name:'Cipta projek'}).click();
+  const bytes=fs.readFileSync(new URL('./fixtures/dwg/2018-Polyline.dwg',import.meta.url));
+  await page.locator('input[accept^="application/pdf"]').setInputFiles({name:'pelan-autocad.dwg',mimeType:'application/acad',buffer:bytes});
+  await expect(page.getByAltText('Pelan lantai 04')).toBeVisible();
+  await expect(page.locator('.cad-toolbar')).toContainText('pelan-autocad.dwg');
+  await expect(page.locator('.cad-notice')).toContainText('Semak pelan');
+  const downloadPromise=page.waitForEvent('download');await page.getByRole('link',{name:'Fail asal'}).click();
+  const download=await downloadPromise;expect(download.suggestedFilename()).toBe('pelan-autocad.dwg');
+  const stream=await download.createReadStream(),chunks=[];for await(const chunk of stream)chunks.push(chunk);
+  expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
+  await page.locator('input[accept^="application/pdf"]').setInputFiles({name:'rosak.dwg',mimeType:'application/acad',buffer:Buffer.from('not a DWG')});
+  await expect(page.getByRole('alert')).toContainText('DWG');
+  await expect(page.locator('.cad-toolbar')).toContainText('pelan-autocad.dwg');
+  await page.getByRole('button',{name:'Tambah ruang',exact:true}).click();
+  await page.getByAltText('Pelan lantai 04').click({position:{x:60,y:60}});
+  await page.getByLabel('Nama ruang').fill('Ruang dari CAD');
+  await page.getByLabel('Kod ruang (4 digit)').fill('0003');
+  await page.getByRole('button',{name:'Simpan',exact:true}).click();
+  await expect(page.locator('.room-list')).toContainText(`${building} 04 0003`);
+  const projects=await(await page.request.get('/api/projects')).json();const p=projects.find(p=>p.building===building&&p.floor==='04');
+  await page.reload();
+  await page.getByLabel(testInfo.project.name==='desktop'?'Projek aktif':'Tukar projek').selectOption(p.id);
+  await page.getByRole('button',{name:'Pelan & daftar aset',exact:true}).click();
+  await expect(page.locator('.room-list')).toContainText(`${building} 04 0003`);
+  await expect(page.locator('.cad-toolbar')).toContainText('pelan-autocad.dwg');
+  await page.screenshot({path:testInfo.outputPath('dwg-plan.png'),fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth)).toBe(false);
   expect(errors).toEqual([]);
 });
