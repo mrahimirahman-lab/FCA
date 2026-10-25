@@ -137,3 +137,13 @@ test('AI adapter checks complete structured output and rejects invalid/refused p
   await assert.rejects(analyzeImage({...args,fetchImpl:async()=>new Response('{}',{status:401})}),{status:502});
   await assert.rejects(analyzeImage({...args,kind:'plan',fetchImpl:mock({rooms:[{name:'Invalid',confidence:.8,bounds:{x:99,y:0,width:10,height:5}}],notes:''})}),{status:502});
 });
+
+test('AI errors distinguish credits from request rate and never expose provider key fragments',async()=>{
+  const args={kind:'plan',image:Buffer.from('test'),key:'test-placeholder',model:'test-model'};
+  const failure=(status,code)=>async()=>new Response(JSON.stringify({error:{code,message:'Provider message includes a private authentication fragment'}}),{status});
+  await assert.rejects(analyzeImage({...args,fetchImpl:failure(429,'insufficient_quota')}),error=>error.status===502 && /Kredit|kredit/.test(error.message) && !error.message.includes('private'));
+  await assert.rejects(analyzeImage({...args,fetchImpl:failure(429,'rate_limit_exceeded')}),error=>error.status===502 && /Had kadar/.test(error.message));
+  await assert.rejects(analyzeImage({...args,fetchImpl:failure(401,'invalid_api_key')}),error=>error.status===502 && /Kunci OpenAI/.test(error.message) && !error.message.includes('private'));
+  await assert.rejects(analyzeImage({...args,fetchImpl:failure(404,'model_not_found')}),error=>error.status===502 && /Model AI/.test(error.message));
+  await assert.rejects(analyzeImage({...args,fetchImpl:async()=>new Response('not JSON',{status:200})}),error=>error.status===502 && /jawapan yang lengkap/.test(error.message));
+});

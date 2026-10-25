@@ -81,6 +81,7 @@ Kunci belum disediakan secara lalai. Salin `.env.example` kepada `.env` **tanpa 
 - Kunci digunakan oleh pelayan sahaja. Foto dihantar kepada penyedia apabila pengguna menekan analisis. PDF asal diproses di pelayar; hanya imej halaman terpilih dihantar.
 - Tiada hasil AI palsu apabila kunci tiada. Aplikasi memaparkan mod manual; analisis API memberikan status 503.
 - Cadangan AI sentiasa draf. Pemeriksa perlu menilai keadaan di tapak. Foto sahaja tidak mengesahkan kestabilan struktur, dimensi, punca tersembunyi atau pematuhan kod. Sempadan ruang AI juga perlu disemak.
+- Analisis pelan menunjukkan status pemprosesan berhampiran butang dan menatal ke panel keputusan atau ralat. Hasil kosong, kegagalan dan cadangan berjaya dibezakan. Cadangan hanya disimpan sebagai ruang selepas **Import untuk semakan** dipilih. Kredit API, had kadar, kunci tidak sah dan akses model mempunyai mesej berasingan; mesej mentah penyedia yang boleh mengandungi cebisan kunci tidak dihantar ke pelayar.
 
 ## Data dan batasan versi awal
 

@@ -2,14 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownToLine, ArrowRight, Building2, Camera, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, Download, FileImage, FileText, FolderOpen, Layers3, LoaderCircle, MapPinned, Plus, ScanLine, Search, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import './style.css';
-import { projectSchema } from '../server/domain.js';
+import { projectSchema, aiRoomsSchema } from '../server/domain.js';
 
 async function api(url, options = {}) {
   let response;
   try {
     response = await fetch(`/api${url}`, { ...options, headers: options.body instanceof FormData ? options.headers : { 'Content-Type': 'application/json', ...options.headers }, body: options.body && !(options.body instanceof FormData) ? JSON.stringify(options.body) : options.body });
   } catch (error) {
-    throw new Error(error.name === 'TimeoutError' || error.name === 'AbortError' ? 'Permintaan mengambil masa terlalu lama. Semak senarai projek sebelum mencuba semula.' : 'Tidak dapat menghubungi pelayan FCA. Pastikan aplikasi masih berjalan, kemudian cuba semula.');
+    throw Object.assign(new Error(error.name === 'TimeoutError' || error.name === 'AbortError' ? 'Permintaan mengambil masa terlalu lama. Semak status sebelum mencuba semula.' : 'Tidak dapat menghubungi pelayan FCA. Pastikan aplikasi masih berjalan, kemudian cuba semula.'),{requestTimeout:error.name==='TimeoutError'||error.name==='AbortError'});
   }
   let result;
   try { result = await response.json(); } catch { throw new Error('Respons pelayan tidak dapat dibaca. Mulakan semula aplikasi dan cuba lagi.'); }
@@ -37,6 +37,7 @@ function App() {
   const [roomDraft, setRoomDraft] = useState(null);
   const [addingRoom, setAddingRoom] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
+  const [planAnalysis, setPlanAnalysis] = useState({status:'idle',message:''});
   const [pdf, setPdf] = useState(null);
   const [pdfPage, setPdfPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -49,6 +50,8 @@ function App() {
   const cameraRef = useRef();
   const pdfTask = useRef(null);
   const projectRequest = useRef(false);
+  const planRequest = useRef(false);
+  const planResult = useRef(null);
   const project = projects.find(p => p.id === projectId);
   const selectedRoom = project?.rooms.find(r => r.id === roomId);
   const records = project?.inspections || [];
@@ -61,13 +64,19 @@ function App() {
     return () => { pdfTask.current?.destroy(); };
   }, []);
   useEffect(() => { setRoomDraft(selectedRoom ? structuredClone(selectedRoom) : null); }, [roomId, selectedRoom]);
+  useEffect(()=>{
+    if (['success','empty','error'].includes(planAnalysis.status) && planResult.current) {
+      planResult.current.focus({preventScroll:true});
+      planResult.current.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+  },[planAnalysis]);
 
   function updateProject(p) { setProjects(list => list.map(item => item.id === p.id ? p : item)); }
   async function run(name, action) { if (busy) return; setBusy(name); setError(''); try { await action(); } catch(e) { setError(e.message); } finally { setBusy(''); } }
   function activateProject(id) {
     const oldPdf=pdfTask.current;pdfTask.current=null;
     if (oldPdf) void oldPdf.destroy().catch(()=>{});
-    setProjectId(id); setRoomId(''); setSuggestions(null); setPdf(null); setPhoto(null); setAnalysis(null); setInspection({ ...emptyInspection }); setSearch(''); setAddingRoom(false);
+    setProjectId(id); setRoomId(''); setSuggestions(null); setPlanAnalysis({status:'idle',message:''}); setPdf(null); setPhoto(null); setAnalysis(null); setInspection({ ...emptyInspection }); setSearch(''); setAddingRoom(false);
   }
   function chooseProject(id) {
     if (id === projectId) return true;
@@ -100,7 +109,19 @@ function App() {
     } finally {projectRequest.current=false;setBusy('');}
   }
   async function uploadImage(file) { const form = new FormData(); form.append('image', file); return api('/uploads', { method: 'POST', body: form }); }
-  async function savePlan(file) { const image = await uploadImage(file); const p = await api(`/projects/${projectId}/plan`, { method: 'PUT', body: { photoId: image.id } }); updateProject(p); setSuggestions(null); }
+  async function savePlan(file) { const image = await uploadImage(file); const p = await api(`/projects/${projectId}/plan`, { method: 'PUT', body: { photoId: image.id } }); updateProject(p); setSuggestions(null);setPlanAnalysis({status:'idle',message:''}); }
+  async function analyzePlan() {
+    if (busy || planRequest.current || !project?.plan || !health?.aiEnabled || rooms.length) return;
+    planRequest.current=true;setBusy('plan-ai');setError('');setSuggestions(null);setPlanAnalysis({status:'loading',message:''});
+    try {
+      const data=await api(`/projects/${projectId}/analyze/plan`,{method:'POST',body:{},signal:AbortSignal.timeout(100000)});
+      const parsed=aiRoomsSchema.safeParse(data);
+      if (!parsed.success) throw new Error('Jawapan AI tidak lengkap atau tidak sah. Tiada ruang disimpan. Cuba semula atau tandakan ruang secara manual.');
+      setSuggestions(parsed.data);setPlanAnalysis({status:parsed.data.rooms.length?'success':'empty',message:''});
+    } catch(error) {
+      setPlanAnalysis({status:'error',message:error.requestTimeout?'Analisis AI tamat masa. Tiada ruang disimpan. Cuba semula sebentar lagi.':error.message});
+    } finally {planRequest.current=false;setBusy('');}
+  }
   async function renderPdf(document, pageNumber) {
     const page = await document.getPage(pageNumber);
     const base = page.getViewport({ scale: 1 });
@@ -119,7 +140,7 @@ function App() {
       if (/\.dwg$/i.test(file.name)) {
         const form=new FormData();form.append('drawing',file);
         const p=await api(`/projects/${projectId}/cad`,{method:'POST',body:form});
-        updateProject(p);setSuggestions(null);pdfTask.current?.destroy();pdfTask.current=null;setPdf(null);
+        updateProject(p);setSuggestions(null);setPlanAnalysis({status:'idle',message:''});pdfTask.current?.destroy();pdfTask.current=null;setPdf(null);
       } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         const lib = await import('pdfjs-dist');
         lib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href;
@@ -169,7 +190,7 @@ function App() {
       <header className="topbar no-print"><div className="breadcrumb">Ruang kerja <ChevronRight size={14}/><strong>{navigation.find(n => n.id === tab)?.label}</strong></div><div className="topbar-right"><select className="mobile-project-select" aria-label="Tukar projek" disabled={Boolean(busy)} value={projectId} onChange={e => chooseProject(e.target.value)}>{!projects.length && <option value="">Tiada projek</option>}{projects.map(p => <option key={p.id} value={p.id}>{p.building} · {p.floor}</option>)}</select><span className="badge subtle">VERSI AWAL</span><span className="topbar-divider"/><span className="avatar small">PI</span></div></header>
       <main>
         {error && <div role="alert" className="alert error"><span>{error}</span><button aria-label="Tutup mesej" onClick={() => setError('')}><X size={18}/></button></div>}
-        {busy && <div role="status" className="working"><LoaderCircle size={16} className="spin"/> {busy === 'ai' ? 'AI sedang menganalisis imej…' : busy === 'cad' ? 'Fail DWG sedang diproses…' : 'Sedang memproses…'}</div>}
+        {busy && busy !== 'plan-ai' && <div role="status" className="working"><LoaderCircle size={16} className="spin"/> {busy === 'ai' ? 'AI sedang menganalisis imej…' : busy === 'cad' ? 'Fail DWG sedang diproses…' : 'Sedang memproses…'}</div>}
         <div className="page-heading no-print"><div><div className="eyebrow">PEMERIKSAAN BANGUNAN, LEBIH TERATUR</div><h1>{tab === 'overview' ? 'Setiap ruang ada ceritanya.' : tab === 'plan' ? 'Pelan & daftar aset' : tab === 'inspection' ? 'Pemeriksaan kerosakan' : 'Laporan pemeriksaan'}</h1><p>{tab === 'overview' ? 'Kenali ruang, rekod keadaan dan rancang pembaikan dalam satu aliran kerja.' : tab === 'plan' ? 'Petakan ruang pada pelan lantai dan bina daftar aset anda.' : tab === 'inspection' ? 'Hubungkan bukti foto dengan ruang dan tindakan pembaikan.' : 'Semak rekod, sahkan dapatan dan eksport hasil pemeriksaan.'}</p></div>{tab === 'overview' ? <Button className="primary" onClick={openNewProject}><Plus size={17}/> Projek baharu</Button> : project && <span className="project-tag"><Building2 size={16}/>{project.building} <span>/</span> {project.floor}</span>}</div>
 
         {tab === 'overview' && <>
@@ -190,11 +211,12 @@ function App() {
             {pdf && <div className="pdf-toolbar"><FileText size={15}/><span>{pdf.name}</span><label>Halaman <select aria-label="Halaman PDF" disabled={Boolean(busy) || rooms.length > 0} value={pdfPage} onChange={e => { const value = Number(e.target.value); run('plan', async () => { await renderPdf(pdf.document,value); setPdfPage(value); }); }}>{Array.from({length: pdf.pages},(_,i) => <option key={i+1}>{i+1}</option>)}</select> / {pdf.pages}</label></div>}
             {project.plan ? <div className={`plan-stage ${addingRoom ? 'adding' : ''}`} onClick={addRoom}><img src={project.plan.url} alt={`Pelan lantai ${project.floor}`}/>{rooms.map(r => <button key={r.id} className={`room-bound ${roomId === r.id ? 'selected' : ''} ${!r.reviewed ? 'unreviewed' : ''}`} style={{ left: `${r.bounds.x}%`, top: `${r.bounds.y}%`, width: `${r.bounds.width}%`, height: `${r.bounds.height}%` }} onClick={e => { if (addingRoom) return; e.stopPropagation(); setRoomId(r.id); }} aria-label={`Pilih ${r.name}`}><span>{r.number}</span></button>)}</div> : <button className="upload-zone" disabled={Boolean(busy)} onClick={() => fileRef.current.click()}><span className="upload-circle"><Upload size={28}/></span><h3>Mulakan dengan pelan lantai</h3><p>Klik untuk memuat naik DWG, PDF, JPG atau PNG</p><small>DWG / PDF maksimum 25 MB · Imej maksimum 20 MB</small><span className="button primary">Pilih fail <ArrowRight size={15}/></span></button>}
             <div className="plan-footer"><span><span className="legend-box"/> Ruang disemak <span className="legend-box amber-box"/> Perlu semakan</span><small>{addingRoom ? 'Klik pada pelan untuk menambah ruang.' : rooms.length ? 'Klik ruang untuk mengubah nama atau sempadannya.' : 'Pilih satu halaman bagi setiap projek aras.'}</small></div>
-            {project.plan && <div className="ai-plan-bar"><div><Sparkles size={20}/><span><strong>Kenal pasti ruang dengan AI</strong><small>AI mencadangkan label dan sempadan untuk semakan anda.</small></span></div><Button className="primary" disabled={!health?.aiEnabled || rooms.length > 0} onClick={() => run('ai', async () => setSuggestions(await api(`/projects/${projectId}/analyze/plan`, { method: 'POST', body: {} }))) }><Sparkles size={15}/> Analisis pelan</Button></div>}
+            {project.plan && <div className="ai-plan-bar"><div><Sparkles size={20}/><span><strong>Kenal pasti ruang dengan AI</strong><small>AI mencadangkan label dan sempadan untuk semakan anda.</small></span></div><Button className="primary" disabled={!health?.aiEnabled || rooms.length > 0} onClick={analyzePlan}>{planAnalysis.status === 'loading' ? <><LoaderCircle size={15} className="spin"/> Menganalisis pelan…</> : <><Sparkles size={15}/> Analisis pelan</>}</Button></div>}
+            {project.plan && <div className="plan-ai-status" aria-live="polite">{planAnalysis.status === 'loading' ? <div className="analysis-loading" role="status"><LoaderCircle size={18} className="spin"/><span><strong>AI sedang menganalisis pelan</strong><small>Permintaan sudah dihantar. Tunggu keputusan; analisis boleh mengambil sehingga 90 saat.</small></span></div> : !health?.aiEnabled ? <p>Analisis belum tersedia kerana kunci AI belum dikonfigurasi pada pelayan.</p> : rooms.length > 0 ? <p>Ruang telah didaftarkan pada pelan ini. Analisis automatik disekat supaya kod aset tidak berulang; gunakan daftar ruang sedia ada.</p> : <p>Selepas analisis, semak cadangan AI dan klik <strong>Import untuk semakan</strong> untuk memasukkannya ke daftar ruang.</p>}</div>}
           </section><aside className="panel room-panel"><div className="panel-heading"><h2>Daftar ruang <span className="count-pill">{rooms.length}</span></h2></div><div className="room-search"><Search size={16}/><input aria-label="Cari ruang" placeholder="Cari nama atau kod ruang…" value={search} onChange={e => setSearch(e.target.value)}/></div><div className="room-list">{rooms.filter(r => `${r.name} ${r.code}`.toLowerCase().includes(search.toLowerCase())).map(r => <button key={r.id} className={`room-row ${r.id === roomId ? 'selected' : ''}`} onClick={() => setRoomId(r.id)}><span className="room-number">{r.number}</span><span><strong>{r.name}</strong><small>{roomCode(r)}</small></span>{r.reviewed ? <Check size={15} className="green-text"/> : <span className="status-dot"/>}</button>)}{!rooms.length && <div className="empty-rooms"><MapPinned size={29}/><p>Ruang akan disenaraikan di sini.</p><small>Tambah secara manual atau gunakan analisis AI.</small></div>}</div>
             {roomDraft && <form className="room-editor" onSubmit={e => { e.preventDefault(); run('room', async () => updateProject(await api(`/projects/${projectId}/rooms/${roomId}`, { method: 'PATCH', body: roomDraft }))); }}><h3>Butiran ruang</h3><label>Kod ruang (4 digit)<input required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} placeholder="0002" value={roomDraft.number} onChange={e => setRoomDraft({...roomDraft,number:e.target.value})}/><small className="text-muted">Kod lokasi: {project.building} {project.floor} {roomDraft.number}</small></label><label style={{marginTop:14}}>Nama ruang<input required value={roomDraft.name} onChange={e => setRoomDraft({...roomDraft,name:e.target.value})}/></label><div className="coordinate-grid">{['x','y','width','height'].map(key => <label key={key}>{({x:'Kiri (%)',y:'Atas (%)',width:'Lebar (%)',height:'Tinggi (%)'})[key]}<input type="number" step="any" min={key === 'width' || key === 'height' ? 0.1 : 0} max="100" required value={roomDraft.bounds[key]} onChange={e => setRoomDraft({...roomDraft,bounds:{...roomDraft.bounds,[key]: Number(e.target.value)}})}/></label>)}</div><label className="checkbox"><input type="checkbox" checked={roomDraft.reviewed} onChange={e => setRoomDraft({...roomDraft,reviewed:e.target.checked})}/> Label dan sempadan telah disemak</label><div className="button-row"><Button className="primary small-button" type="submit"><Check size={15}/> Simpan</Button><Button type="button" className="small-button danger" onClick={() => { if (window.confirm('Padam ruang ini? Nombor aset tidak akan digunakan semula.')) run('room',async () => { updateProject(await api(`/projects/${projectId}/rooms/${roomId}`, {method:'DELETE'})); setRoomId(''); }); }}><Trash2 size={15}/></Button></div></form>}
           </aside></div>
-          {suggestions && <section className="panel suggestions"><div className="panel-heading"><h2><Sparkles size={18}/> Cadangan AI · {suggestions.rooms.length} ruang</h2><Button className="small-button" onClick={() => setSuggestions(null)}>Tutup</Button></div><p>{suggestions.notes}</p><div className="suggestion-chips">{suggestions.rooms.map((r,i) => <span className="badge subtle" key={i}>{r.name}</span>)}</div><p className="text-muted">Import sekali, kemudian semak nama dan sempadan setiap ruang pada pelan. Cadangan belum dianggap disahkan.</p><Button className="primary" disabled={!suggestions.rooms.length || rooms.length > 0} onClick={() => run('room', async () => { const p = await api(`/projects/${projectId}/rooms`, {method:'POST',body:{rooms:suggestions.rooms.map(r => ({name:r.name,bounds:r.bounds,source:'ai'}))}}); updateProject(p); setSuggestions(null); setRoomId(p.rooms[0]?.id || ''); })}>Import untuk semakan <ArrowRight size={16}/></Button></section>}
+          {['success','empty','error'].includes(planAnalysis.status) && <section ref={planResult} tabIndex={-1} aria-label="Keputusan analisis pelan" className={`panel suggestions analysis-result ${planAnalysis.status}`}><div className="panel-heading"><h2><Sparkles size={18}/>{planAnalysis.status === 'error' ? 'Analisis pelan belum berjaya' : planAnalysis.status === 'empty' ? 'Tiada ruang dikenal pasti' : `Analisis selesai · ${suggestions.rooms.length} cadangan ruang`}</h2><Button className="small-button" onClick={() => {setSuggestions(null);setPlanAnalysis({status:'idle',message:''});}}>Tutup</Button></div>{planAnalysis.status === 'error' ? <div className="analysis-result-body"><div role="alert" className="alert error"><span>{planAnalysis.message}</span></div><p>Tiada ruang baharu dimasukkan. Pelan dan rekod sedia ada dikekalkan.</p><Button className="primary" disabled={!health?.aiEnabled || rooms.length > 0} onClick={analyzePlan}>Cuba analisis semula</Button></div> : <><p>{suggestions.notes || (planAnalysis.status === 'empty' ? 'AI tidak menemui ruang yang boleh dikenal pasti dalam imej ini.' : 'Cadangan tersedia untuk semakan pemeriksa.')}</p>{planAnalysis.status === 'empty' ? <p className="text-muted">Cuba pelan yang lebih jelas atau tambah ruang secara manual. Tiada ruang baharu disimpan.</p> : <><div className="suggestion-chips">{suggestions.rooms.map((r,i) => <span className="badge subtle" key={i}>{r.name}</span>)}</div><p className="text-muted">Cadangan belum dimasukkan ke daftar ruang. Klik Import untuk semakan, kemudian semak nama dan sempadan setiap ruang pada pelan.</p></>}<Button className="primary" disabled={!suggestions.rooms.length || rooms.length > 0} onClick={() => run('room', async () => { const p = await api(`/projects/${projectId}/rooms`, {method:'POST',body:{rooms:suggestions.rooms.map(r => ({name:r.name,bounds:r.bounds,source:'ai'}))}}); updateProject(p); setSuggestions(null);setPlanAnalysis({status:'idle',message:''}); setRoomId(p.rooms[0]?.id || ''); })}>Import untuk semakan <ArrowRight size={16}/></Button></>}</section>}
           {!health?.aiEnabled && <AiNotice/>}
         </>}
 

@@ -101,6 +101,10 @@ Model lalai ialah `gpt-4.1`. Tanpa kunci, daftar ruang dan pemeriksaan manual bo
 - **Pelayar tidak dapat menyambung:** pastikan `npm start` masih berjalan tanpa ralat dan gunakan pelayar pada komputer yang sama. Jika `PORT` ditukar dalam `.env`, gunakan port tersebut.
 - **Diminta kata laluan:** `FCA_ACCESS_PASSWORD` telah ditetapkan dalam `.env` atau persekitaran. Gunakan nama pengguna `inspector` (atau `FCA_ACCESS_USER` yang ditetapkan) dan kata laluan anda.
 - **Cipta projek memaparkan blok/aras sudah didaftarkan:** keunikan projek berdasarkan gabungan kod blok dan aras, bukan nama projek. Gunakan **Buka projek sedia ada** atau pilih projek tersebut dalam senarai untuk meneruskan kerja pada aras sama. Untuk aras berlainan, gunakan kod aras sebenar yang lain.
+- **Tulisan analisis AI hilang tetapi daftar ruang masih kosong:** analisis menghasilkan cadangan terlebih dahulu. Semak panel keputusan, kemudian pilih **Import untuk semakan** untuk memasukkan cadangan ke daftar ruang. Versi terkini menatal ke keputusan atau ralat selepas analisis; versi lama meletakkan cadangan di bawah pelan dan ralat di bahagian atas halaman.
+- **AI tidak menemui ruang:** panel akan menyatakan “Tiada ruang dikenal pasti”. Baca nota AI, cuba pelan yang lebih jelas atau tambah ruang secara manual. Tiada ruang disimpan secara automatik.
+- **Ralat kredit atau had belanja API:** semak bil, baki kredit dan had belanja akaun OpenAI API. Langganan ChatGPT tidak secara automatik menyediakan kredit API. Ralat kadar permintaan pula memerlukan anda menunggu sebelum mencuba semula. Aplikasi tidak mengulang panggilan berbayar secara automatik.
+- **Butang Analisis pelan kelabu:** kunci AI mungkin belum dibaca, atau pelan sudah mempunyai ruang berdaftar. Analisis semula disekat pada pelan yang sudah mempunyai ruang supaya kod aset tidak berulang. Status “AI dikonfigurasi” menunjukkan kunci dibaca, bukan pengesahan kebenaran atau kredit API.
 
 ## Menggunakan telefon
 
