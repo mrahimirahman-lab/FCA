@@ -2,8 +2,6 @@
 const number = { type: 'number' };
 const text = { type: 'string' };
 const confidence = { ...number, minimum: 0, maximum: 1, description: 'Confidence from 0 to 1, for example 0.8; never a percentage such as 80.' };
-const percentage = { ...number, minimum: 0, maximum: 100 };
-const extent = { ...number, exclusiveMinimum: 0, maximum: 100 };
 const detail = { ...text, minLength: 1, maxLength: 4000 };
 // Keep the cloud contract compatible with providers supporting only a JSON Schema subset.
 export const roomOutput = { type: 'object', additionalProperties: false, required: ['rooms', 'notes'], properties: {
@@ -11,13 +9,21 @@ export const roomOutput = { type: 'object', additionalProperties: false, require
 } };
 export const damageOutput = { type: 'object', additionalProperties: false, required: ['damageType','description','remedial','severity','confidence','limitations'], properties: { damageType: text, description: text, remedial: text, severity: { type: 'string', enum: ['Rendah','Sederhana','Tinggi','Kritikal'] }, confidence: number, limitations: text } };
 
-// Ollama also receives the field ranges enforced by domain.js. Relational bounds
-// (x + width, y + height) still require the prompt and final server validation.
-export const localRoomOutput = { type: 'object', additionalProperties: false, required: ['rooms', 'notes'], properties: {
-  rooms: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['name', 'bounds', 'confidence'], properties: { name: { ...text, minLength: 1, maxLength: 120 }, confidence, bounds: { type: 'object', description: 'Percentages of the entire image. x and y are the top-left corner. width and height are sizes, not right/bottom coordinates. x + width <= 100 and y + height <= 100.', additionalProperties: false, required: ['x','y','width','height'], properties: { x: percentage, y: percentage, width: extent, height: extent } } } } }, notes: { ...text, maxLength: 4000 },
-} };
+// Local vision returns pixel corners, avoiding percentage/size arithmetic in the
+// model. Only the adapter converts these to the application's percentage bounds.
+export function localRoomOutput(width,height) {
+  return { type: 'object', additionalProperties: false, required: ['rooms', 'notes'], properties: {
+    rooms: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['name', 'bbox', 'confidence'], properties: {
+      name: { ...text, minLength: 1, maxLength: 120 }, confidence,
+      bbox: { type: 'array', minItems: 4, maxItems: 4, items: { ...number, minimum: 0, maximum: Math.max(width,height) }, description: `Pixel corners [left, top, right, bottom] in the attached ${width} by ${height} pixel image. 0 <= left < right <= ${width}; 0 <= top < bottom <= ${height}.` },
+    } } }, notes: { ...text, maxLength: 4000 },
+  } };
+}
 export const localDamageOutput = { type: 'object', additionalProperties: false, required: ['damageType','description','remedial','severity','confidence','limitations'], properties: { damageType: { ...text, minLength: 1, maxLength: 150 }, description: detail, remedial: detail, severity: { type: 'string', enum: ['Rendah','Sederhana','Tinggi','Kritikal'] }, confidence, limitations: { ...text, maxLength: 4000 } } };
 
+export function localPlanPrompt(width,height) {
+  return `Kenal pasti ruang yang benar-benar kelihatan dalam pelan lantai ini. Jawab nama dan nota dalam Bahasa Melayu; gunakan label asal jika jelas. Imej yang dilampirkan berukuran ${width} piksel lebar dan ${height} piksel tinggi. Untuk setiap ruang, pulangkan bbox: [left, top, right, bottom] dalam PIKSEL imej ini, asal di kiri atas. Tandakan penjuru kiri atas dan penjuru kanan bawah. Jangan pulangkan peratus, width atau height. Had wajib: 0 <= left < right <= ${width}; 0 <= top < bottom <= ${height}. Jangan anggap perabot, tangga atau simbol kecil sebagai bilik. Jika bukan pelan atau tidak dapat dibaca, pulangkan rooms kosong dan jelaskan dalam notes. Sentiasa sertakan notes, nyatakan batasan dan minta semakan manusia. confidence mesti nombor 0–1 (contoh 0.8, bukan 80), anggaran model, bukan kebarangkalian yang ditentukur.`;
+}
 
 export function analysisPrompt(kind,roomName='') {
   return kind === 'plan'

@@ -11,6 +11,8 @@ import {providerSettings,providerHealth} from '../server/ai-provider.js';
 import {configureLocalEnvironment} from '../scripts/use-local-ai.js';
 
 const plan={rooms:[{name:'Pejabat',bounds:{x:10,y:10,width:30,height:40},confidence:.7}],notes:'Hasil ujian protokol, bukan inferens model sebenar.'};
+// Provider payload for the 100 × 100 fixture PNG. API/UI still use percentage bounds.
+const pixelPlan={rooms:[{name:'Pejabat',bbox:[10,10,40,50],confidence:.7}],notes:plan.notes};
 const damage={damageType:'Retak',description:'Retak kelihatan.',remedial:'Periksa di tapak sebelum pembaikan.',severity:'Sederhana',confidence:.6,limitations:'Foto sahaja.'};
 const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(`http://127.0.0.1:${server.address().port}`)));
 const stop=server=>new Promise(resolve=>server.close(resolve));
@@ -27,7 +29,7 @@ async function localFixture(t) {
         res.end(JSON.stringify({capabilities:state.capabilities,...(state.remote?{remote_host:'https://example.invalid'}:{})}));return;
       }
       if(req.url==='/api/chat') {
-        const result=state.output??(state.bad?{rooms:[{name:'Bad',confidence:.5,bounds:{x:99,y:0,width:20,height:20}}],notes:''}:body.format.properties.rooms?plan:damage);
+        const result=state.output??(state.bad?{rooms:[{name:'Bad',confidence:.5,bbox:[99,0,119,20]}],notes:''}:body.format.properties.rooms?pixelPlan:damage);
         res.end(JSON.stringify({done:true,done_reason:'stop',message:{role:'assistant',content:JSON.stringify(result)}}));return;
       }
       res.statusCode=404;res.end('{}');
@@ -66,9 +68,9 @@ test('local HTTP protocol supports plan and damage workflows without forwarding 
     assert.equal(confidence.minimum,0);assert.equal(confidence.maximum,1);
     assert.match(call.body.messages[0].content,/bukan 80/);
   }
-  const bounds=chats[0].body.format.properties.rooms.items.properties.bounds;
-  assert.equal(bounds.properties.x.maximum,100);assert.equal(bounds.properties.width.exclusiveMinimum,0);
-  assert.match(chats[0].body.messages[0].content,/x \+ width <= 100/);
+  const bbox=chats[0].body.format.properties.rooms.items.properties.bbox;
+  assert.equal(bbox.items.maximum,100);assert.equal(bbox.minItems,4);assert.equal(bbox.maxItems,4);
+  assert.match(chats[0].body.messages[0].content,/100 piksel lebar dan 100 piksel tinggi/);
   assert.ok(f.calls.every(c=>c.authorization===undefined));assert.ok(!JSON.stringify(f.calls).includes('test-cloud-key-must-stay-unused'));
 });
 
@@ -96,16 +98,17 @@ test('local settings reject external destinations, redirects, cloud tags and unk
 test('local invalid output fails without saving rooms',async t=>{
   const f=await localFixture(t);f.state.bad=true;
   const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(response.status,502);assert.match(response.data.error,/tidak sah/);
-  assert.match(response.data.error,/Ruang 1: bounds/);
+  assert.match(response.data.error,/Ruang 1: bbox/);
+  assert.match(response.data.error,/penjuru kanan melebihi lebar imej/);
   assert.equal((await f.request('/projects')).data[0].rooms.length,0);
 });
 
 test('local validation identifies invalid confidence and missing fields without exposing model text or partially saving rooms',async t=>{
   const f=await localFixture(t);
   for(const [output,detail] of [
-    [{...plan,rooms:[...plan.rooms,{...plan.rooms[0],name:'PRIVATE-MODEL-TEXT',confidence:80}]},/Ruang 2: confidence mesti nombor 0–1/],
-    [{rooms:plan.rooms},/Medan notes mesti teks/],
-    [{...plan,rooms:[{...plan.rooms[0],bounds:{x:100,y:0,width:0,height:20}}]},/Ruang 1: bounds/],
+    [{...pixelPlan,rooms:[...pixelPlan.rooms,{...pixelPlan.rooms[0],name:'PRIVATE-MODEL-TEXT',confidence:80}]},/Ruang 2: confidence mesti nombor 0–1/],
+    [{rooms:pixelPlan.rooms},/Medan notes mesti teks/],
+    [{...pixelPlan,rooms:[{...pixelPlan.rooms[0],bbox:[100,0,100,20]}]},/Ruang 1: bbox/],
   ]) {
     f.state.output=output;
     const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
@@ -118,6 +121,38 @@ test('local validation identifies invalid confidence and missing fields without 
   const response=await f.request(`/projects/${f.p.id}/analyze/damage`,'POST',{photoId:f.photo.id,roomId:manual.data.rooms[0].id});
   assert.equal(response.status,502);assert.match(response.data.error,/confidence mesti nombor 0–1/);
   assert.equal((await f.request('/projects')).data[0].inspections.length,0);
+});
+
+test('local pixel corners use the exact resized PNG dimensions for wide, tall and small plans',async()=>{
+  for(const [width,height,bbox] of [[2400,1200,[160,80,640,400]],[1200,2400,[80,160,320,800]],[83,137,[8.3,13.7,33.2,68.5]]]) {
+    const image=await sharp({create:{width,height,channels:3,background:'#fff'}}).png().toBuffer();
+    const result=await analyzeOllama({kind:'plan',image,fetchImpl:async(url,options)=>{
+      if(url.endsWith('/api/show'))return new Response(JSON.stringify({capabilities:['vision']}));
+      const body=JSON.parse(options.body);
+      const sent=await sharp(Buffer.from(body.messages[0].images[0],'base64')).metadata();
+      const scale=Math.min(1,1600/width,1600/height);
+      assert.equal(sent.width,Math.round(width*scale));assert.equal(sent.height,Math.round(height*scale));
+      assert.match(body.messages[0].content,new RegExp(`${sent.width} piksel lebar dan ${sent.height} piksel tinggi`));
+      assert.equal(body.format.properties.rooms.items.properties.bbox.items.maximum,Math.max(sent.width,sent.height));
+      return new Response(JSON.stringify({done:true,done_reason:'stop',message:{content:JSON.stringify({...pixelPlan,rooms:[{...pixelPlan.rooms[0],bbox}]})}}));
+    }});
+    const bounds=result.rooms[0].bounds;
+    for(const [key,value] of Object.entries({x:10,y:10,width:30,height:40}))assert.ok(Math.abs(bounds[key]-value)<1e-8,`${width}×${height}: ${key}`);
+    assert.equal(result.rooms[0].bbox,undefined);
+  }
+});
+
+test('local pixel corners reject out-of-image, reversed, degenerate, nonnumeric and legacy boxes without guessing units',async t=>{
+  const f=await localFixture(t);
+  for(const bbox of [[-1,0,20,20],[10,10,101,20],[10,10,20,101],[20,10,10,30],[10,30,20,10],[10,10,10,20],[10,10,20,10],['10',10,20,20],[0,0,20],[0,0,20,20,40],null]) {
+    f.state.output={...pixelPlan,rooms:[{...pixelPlan.rooms[0],bbox}]};
+    const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
+    assert.equal(response.status,502);assert.match(response.data.error,/Ruang 1: bbox/);
+    assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+  }
+  f.state.output=plan; // Old percentage bounds are not interpreted as pixel corners.
+  assert.equal((await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{})).status,502);
+  assert.equal((await f.request('/projects')).data[0].rooms.length,0);
 });
 
 test('local malformed JSON and incomplete responses have distinct safe errors',async()=>{

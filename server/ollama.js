@@ -1,20 +1,27 @@
 import sharp from 'sharp';
+import { z } from 'zod';
 import { aiRoomsSchema, aiDamageSchema } from './domain.js';
-import { analysisPrompt, localRoomOutput, localDamageOutput } from './ai-contract.js';
+import { analysisPrompt, localPlanPrompt, localRoomOutput, localDamageOutput } from './ai-contract.js';
 
 export const DEFAULT_LOCAL_MODEL='qwen2.5vl:3b';
 export const DEFAULT_LOCAL_URL='http://127.0.0.1:11434';
 
 // Report only known field names and fixed explanations, never raw model output
 // or Zod messages that could contain private text from a plan or photo.
-function validationDetails(kind,issues) {
-  const messages=issues.map(({path})=>{
+function validationDetails(kind,issues,imageSize) {
+  const messages=issues.map(({path,params})=>{
     if(kind==='plan') {
       if(path[0]==='notes')return 'Medan notes mesti teks, maksimum 4000 aksara.';
       if(path[0]==='rooms' && Number.isInteger(path[1])) {
         const label=`Ruang ${path[1]+1}`;
         if(path[2]==='confidence')return `${label}: confidence mesti nombor 0–1, bukan 0–100.`;
         if(path[2]==='name')return `${label}: nama mesti diisi, maksimum 120 aksara.`;
+        if(path[2]==='bbox') {
+          const reasons={horizontal_order:'penjuru kanan tidak berada di sebelah kanan penjuru kiri',vertical_order:'penjuru bawah tidak berada di bawah penjuru atas',right_outside:'penjuru kanan melebihi lebar imej',bottom_outside:'penjuru bawah melebihi tinggi imej'};
+          const reason=reasons[params?.geometry];
+          return reason ? `${label}: bbox tidak sah kerana ${reason} (imej ${imageSize.width} × ${imageSize.height} piksel).`
+            : `${label}: bbox mesti empat nombor piksel [kiri, atas, kanan, bawah] dalam imej ${imageSize.width} × ${imageSize.height}; semua nombor mesti 0 atau lebih.`;
+        }
         if(path[2]==='bounds')return `${label}: bounds mesti nombor peratus 0–100; width/height lebih daripada 0, x + width dan y + height tidak melebihi 100.`;
         return `${label}: butiran ruang tidak lengkap atau tidak sah.`;
       }
@@ -24,6 +31,26 @@ function validationDetails(kind,issues) {
     return messages[path[0]] || 'Butiran kerosakan tidak lengkap atau tidak sah.';
   });
   return [...new Set(messages)].slice(0,3).join(' ');
+}
+
+function parseLocalPlan(output,{width,height}) {
+  // Validate the explicitly requested coordinate system. Never infer units from
+  // value magnitude, reorder corners or clamp boxes to make output pass.
+  const bbox=z.array(z.number().min(0)).length(4).superRefine((box,ctx)=>{
+    if(box.length!==4)return;
+    const [left,top,right,bottom]=box;
+    for(const [invalid,geometry] of [[left>=right,'horizontal_order'],[top>=bottom,'vertical_order'],[right>width,'right_outside'],[bottom>height,'bottom_outside']]) {
+      if(invalid)ctx.addIssue({code:'custom',message:'Penjuru ruang tidak sah.',params:{geometry}});
+    }
+  });
+  const candidate=aiRoomsSchema.extend({rooms:z.array(aiRoomsSchema.shape.rooms.element.omit({bounds:true}).extend({bbox})).max(100)}).safeParse(output);
+  if(!candidate.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails('plan',candidate.error.issues,{width,height})}`);
+  const converted={...candidate.data,rooms:candidate.data.rooms.map(({bbox:[left,top,right,bottom],...room})=>({
+    ...room,bounds:{x:left/width*100,y:top/height*100,width:(right-left)/width*100,height:(bottom-top)/height*100},
+  }))};
+  const parsed=aiRoomsSchema.safeParse(converted);
+  if(!parsed.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails('plan',parsed.error.issues)}`);
+  return parsed.data;
 }
 
 function invalidOutput(message) {
@@ -57,16 +84,17 @@ export async function analyzeOllama({kind,image,roomName='',model=DEFAULT_LOCAL_
   const config=localConfiguration({model,baseUrl,timeoutSeconds});
   const state=await checkOllama(config,{fetchImpl});
   if (!state.ready) throw Object.assign(new Error(state.message),{status:503});
-  // Preserve the image's aspect ratio and percentage coordinates while reducing vision memory use.
-  const png=await sharp(image).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toBuffer();
-  const schema=kind==='plan'?localRoomOutput:localDamageOutput;
+  // Use the exact dimensions of the PNG sent to the model, after resizing.
+  const {data:png,info:imageSize}=await sharp(image).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toBuffer({resolveWithObject:true});
+  const schema=kind==='plan'?localRoomOutput(imageSize.width,imageSize.height):localDamageOutput;
+  const prompt=kind==='plan'?localPlanPrompt(imageSize.width,imageSize.height):analysisPrompt(kind,roomName);
   let response,result;
   try {
     response=await fetchImpl(`${config.baseUrl}/api/chat`,{
       method:'POST',redirect:'error',signal:AbortSignal.timeout(config.timeoutMs),
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:config.model,stream:false,format:schema,keep_alive:'5m',
-        messages:[{role:'user',content:`${analysisPrompt(kind,roomName)}\nPulangkan satu objek JSON sahaja mengikut skema ini: ${JSON.stringify(schema)}`,images:[png.toString('base64')]}],
+        messages:[{role:'user',content:`${prompt}\nPulangkan satu objek JSON sahaja mengikut skema ini: ${JSON.stringify(schema)}`,images:[png.toString('base64')]}],
         options:{temperature:0,num_ctx:8192,num_predict:5000}}),
     });
     result=await response.json();
@@ -85,7 +113,8 @@ export async function analyzeOllama({kind,image,roomName='',model=DEFAULT_LOCAL_
   let output;
   try {output=JSON.parse(result.message.content);}
   catch {throw invalidOutput('Jawapan AI tempatan bukan JSON yang sah.');}
-  const parsed=(kind==='plan'?aiRoomsSchema:aiDamageSchema).safeParse(output);
+  if(kind==='plan')return parseLocalPlan(output,imageSize);
+  const parsed=aiDamageSchema.safeParse(output);
   if(!parsed.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails(kind,parsed.error.issues)}`);
   return parsed.data;
 }
