@@ -1,5 +1,6 @@
 import React,{useRef} from 'react';
 import {boundsSchema} from '../server/domain.js';
+import {roomTag} from '../server/room-codes.js';
 
 const handles={nw:'penjuru kiri atas',n:'tepi atas',ne:'penjuru kanan atas',e:'tepi kanan',se:'penjuru kanan bawah',s:'tepi bawah',sw:'penjuru kiri bawah',w:'tepi kiri'};
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
@@ -67,7 +68,7 @@ export default function PlanCanvas({plan,floor,rooms,roomId,roomDraft,addingRoom
       const draft=selected && roomDraft?.id===room.id?boundsSchema.safeParse(roomDraft.bounds):null;
       const bounds=draft?.success?draft.data:room.bounds;
       return <div className={`room-box ${selected?'selected':''}`} key={room.id} style={{left:`${bounds.x}%`,top:`${bounds.y}%`,width:`${bounds.width}%`,height:`${bounds.height}%`}}>
-        <button type="button" disabled={disabled} className={`room-bound ${selected?'selected':''} ${!reviewed?'unreviewed':''}`} aria-label={`Pilih ${room.name}`} title={selected?'Seret untuk alih ruang. Anak panah untuk laras; Delete untuk padam.':`Pilih ${room.name}`} {...events(room,'move',bounds)} onClick={event=>{if(addingRoom)return;event.stopPropagation();onSelectRoom(room.id);}}><span>{room.number}</span></button>
+        <button type="button" disabled={disabled} className={`room-bound ${selected?'selected':''} ${!reviewed?'unreviewed':''}`} aria-label={`Pilih ${room.name}`} title={selected?'Seret untuk alih ruang. Anak panah untuk laras; Delete untuk padam.':`Pilih ${room.name}`} {...events(room,'move',bounds)} onClick={event=>{if(addingRoom)return;event.stopPropagation();onSelectRoom(room.id);}}><span>{roomTag(room)}</span></button>
         {selected && !addingRoom && !calibrating && !panning && Object.entries(handles).map(([handle,label])=><button key={handle} type="button" className={`resize-handle resize-${handle}`} disabled={disabled} aria-label={`Ubah saiz ${label}`} title={`Seret ${label}. Anak panah untuk laras; Shift untuk langkah kecil.`} {...events(room,handle,bounds)} onClick={event=>event.stopPropagation()}/>)}
       </div>;
     })}{overlay}

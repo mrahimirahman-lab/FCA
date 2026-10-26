@@ -25,3 +25,11 @@ test('significant overlapping proposals are flagged without shrinking, deleting 
   const result=warnOverlappingRooms(source);assert.match(result.notes,/bertindih/);assert.deepEqual(result.rooms,copy.rooms);assert.deepEqual(source,copy);
   const adjacent={rooms:[a,{...b,bounds:{x:40,y:10,width:20,height:40}}],notes:'Semak.'};assert.deepEqual(warnOverlappingRooms(adjacent),adjacent);
 });
+
+test('symbol filtering remaps parent references and containment of a valid subroom is not an overlap error',()=>{
+  const root={name:'Ruang kerja',confidence:.7,bounds:{x:10,y:10,width:60,height:60},parentIndex:null};
+  const child={name:'Sirkulasi',confidence:.7,bounds:{x:15,y:15,width:20,height:20},parentIndex:1};
+  const source={rooms:[{...child,name:'T1',parentIndex:null},root,child],notes:'Semak.'};
+  const result=reviewPlanRooms(source);assert.equal(result.rooms[1].parentIndex,0);assert.doesNotMatch(result.notes,/bertindih/);
+  for(const rooms of [[{...root,parentIndex:0}],[root,{...child,parentIndex:8}],[root,{...child,parentIndex:0},{...child,parentIndex:1}]])assert.throws(()=>reviewPlanRooms({rooms,notes:''}),error=>error.status===502);
+});

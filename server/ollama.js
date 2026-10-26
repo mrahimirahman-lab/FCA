@@ -81,14 +81,14 @@ export async function checkOllama(config,{fetchImpl=fetch}={}) {
   return {ready:true,status:'ready',message:`Ollama dapat dihubungi dan model vision ${config.model} tersedia. Hasil analisis masih perlu disemak oleh pemeriksa.`};
 }
 
-export async function analyzeOllama({kind,image,roomName='',targetRoom,model=DEFAULT_LOCAL_MODEL,baseUrl=DEFAULT_LOCAL_URL,timeoutSeconds=600,fetchImpl=fetch}) {
+export async function analyzeOllama({kind,image,roomName='',targetRoom,entrance,model=DEFAULT_LOCAL_MODEL,baseUrl=DEFAULT_LOCAL_URL,timeoutSeconds=600,fetchImpl=fetch}) {
   const config=localConfiguration({model,baseUrl,timeoutSeconds});
   const state=await checkOllama(config,{fetchImpl});
   if (!state.ready) throw Object.assign(new Error(state.message),{status:503});
   // Use the exact dimensions of the PNG sent to the model, after resizing.
   const {data:png,info:imageSize}=await sharp(image).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toBuffer({resolveWithObject:true});
   const schema=kind==='plan'?localRoomOutput(imageSize.width,imageSize.height,targetRoom):localDamageOutput;
-  const prompt=kind==='plan'?localPlanPrompt(imageSize.width,imageSize.height,targetRoom):analysisPrompt(kind,roomName);
+  const prompt=kind==='plan'?localPlanPrompt(imageSize.width,imageSize.height,targetRoom,entrance):analysisPrompt(kind,roomName);
   let response,result;
   try {
     response=await fetchImpl(`${config.baseUrl}/api/chat`,{

@@ -3,9 +3,9 @@ import { analysisPrompt, roomOutput, damageOutput } from './ai-contract.js';
 import {reviewPlanRooms} from './plan-vision.js';
 
 
-export async function analyzeImage({ kind, image, key, model, roomName = '', targetRoom,fetchImpl = fetch }) {
+export async function analyzeImage({ kind, image, key, model, roomName = '', targetRoom,entrance,fetchImpl = fetch }) {
   if (!key) throw Object.assign(new Error('AI belum diaktifkan. Tetapkan INSPECTION_AI_API_KEY pada pelayan. Pemeriksaan manual masih boleh digunakan.'), { status: 503 });
-  const prompt=analysisPrompt(kind,roomName,targetRoom);
+  const prompt=analysisPrompt(kind,roomName,targetRoom,entrance);
   let response;
   try {
     response = await fetchImpl('https://api.openai.com/v1/chat/completions', {

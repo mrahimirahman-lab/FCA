@@ -1,8 +1,9 @@
 import React,{useEffect,useRef,useState} from 'react';
 
-export default function RoomDeletionDialog({rooms,protectedIds,dirty,onDelete,onClose}) {
+export default function RoomDeletionDialog({rooms,allRooms,protectedIds,dirty,onDelete,onClose}) {
   const dialog=useRef(null),cancel=useRef(null),request=useRef(false);
   const [pending,setPending]=useState(false),[error,setError]=useState('');
+  const missingChildren=allRooms.filter(room=>room.parentId && rooms.some(parent=>parent.id===room.parentId) && !rooms.some(selected=>selected.id===room.id));
   const locked=rooms.filter(room=>protectedIds.has(room.id));
   useEffect(()=>{
     const previous=document.activeElement;
@@ -10,7 +11,7 @@ export default function RoomDeletionDialog({rooms,protectedIds,dirty,onDelete,on
     return ()=>{if(previous?.isConnected && previous!==document.body)previous.focus({preventScroll:true});else document.querySelector('.room-panel h2')?.focus({preventScroll:true});};
   },[]);
   async function confirm() {
-    if(request.current || locked.length)return;
+    if(request.current || locked.length || missingChildren.length)return;
     request.current=true;setPending(true);setError('');
     try {await onDelete();}catch(error){setError(error.message);}
     finally {request.current=false;setPending(false);}
@@ -31,9 +32,10 @@ export default function RoomDeletionDialog({rooms,protectedIds,dirty,onDelete,on
       <p id="delete-room-description">Semak pilihan di bawah. Pemadaman tidak boleh dibatalkan dan nombor aset tidak akan digunakan semula.</p>
       <ul className="delete-room-list">{rooms.map(room=><li key={room.id}><strong>{room.name}</strong><small>{room.code}{protectedIds.has(room.id)?' · Mempunyai pemeriksaan':''}</small></li>)}</ul>
       {dirty && <p>Perubahan yang belum disimpan pada ruang pilihan juga akan dibuang.</p>}
+      {missingChildren.length>0 && <div role="alert" className="alert error">Ruang induk mempunyai subruang yang belum dipilih: {missingChildren.map(room=>`${room.code} ${room.name}`).join(', ')}. Batalkan dan pilih subruang tersebut bersama induknya, atau padam subruang dahulu.</div>}
       {locked.length>0 && <div role="alert" className="alert error">Ruang yang mempunyai rekod pemeriksaan dilindungi. Batalkan dan keluarkan ruang tersebut daripada pilihan.</div>}
       {error && <div role="alert" className="alert error">{error}</div>}
-      <div className="button-row"><button ref={cancel} type="button" className="button" disabled={pending} onClick={onClose}>Batal</button><button type="button" className="button danger" disabled={pending || locked.length>0} onClick={confirm}>{pending?'Memadam…':`Ya, padam ${rooms.length} ruang`}</button></div>
+      <div className="button-row"><button ref={cancel} type="button" className="button" disabled={pending} onClick={onClose}>Batal</button><button type="button" className="button danger" disabled={pending || locked.length>0 || missingChildren.length>0} onClick={confirm}>{pending?'Memadam…':`Ya, padam ${rooms.length} ruang`}</button></div>
     </section>
   </div>;
 }

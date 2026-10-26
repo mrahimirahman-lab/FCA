@@ -44,6 +44,59 @@ test('bulk room deletion is atomic, protects inspections and preserves sequence 
   assert.equal((await f.request(`${endpoint}/${ids[1]}`,'DELETE')).status,404);
 });
 
+test('entrance persists, rotates, rejects stale analysis and does not renumber existing assets',async t=>{
+  let started,release,seen;const gate=new Promise(resolve=>release=resolve),began=new Promise(resolve=>started=resolve);
+  const f=await fixture(t,{analyze:async input=>{seen=input.entrance;started();await gate;return {rooms:[],notes:'Controlled result.'};}});let p=await f.project();const image=await f.upload();
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  const endpoint=`/projects/${p.id}/plan/entrance`;
+  for(const entrance of [{x:-1,y:2},{x:20,y:101},{x:'10',y:20}])assert.equal((await f.request(endpoint,'PUT',{planId:image.id,entrance})).status,400);
+  p=(await f.request(endpoint,'PUT',{planId:image.id,entrance:{x:25,y:90}})).data;
+  await f.restart();assert.deepEqual((await f.request('/projects')).data[0],p);
+  const pending=f.request(`/projects/${p.id}/analyze/plan`,'POST',{planId:image.id});await began;assert.deepEqual(seen,{x:25,y:90});
+  p=(await f.request(endpoint,'PUT',{planId:image.id,entrance:{x:75,y:90}})).data;release();assert.equal((await pending).status,409);
+  assert.equal((await f.request(`/projects/${p.id}/rooms`,'POST',{entrance:{x:25,y:90},rooms:[{name:'Lobi',bounds:{x:10,y:10,width:20,height:20}}]})).status,409);
+  p=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Lobi',bounds:{x:10,y:10,width:20,height:20}}]})).data;
+  const room=p.rooms[0];p=(await f.request(`/projects/${p.id}/plan/rotate`,'POST',{planId:image.id,angle:90})).data;
+  assert.deepEqual(p.plan.entrance,{x:10,y:75});assert.equal(p.rooms[0].code,room.code);assert.equal(p.rooms[0].id,room.id);
+  assert.equal((await f.request(endpoint,'PUT',{planId:image.id,entrance:null})).status,409);
+  p=(await f.request(endpoint,'PUT',{planId:p.plan.id,entrance:null})).data;assert.equal(p.plan.entrance,null);
+});
+
+test('subrooms inherit the ordered parent code, persist inspection links and never reuse deleted suffixes',async t=>{
+  const f=await fixture(t);let p=await f.project();const image=await f.upload();await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  const bounds={x:10,y:10,width:20,height:20};
+  const roots=Array.from({length:12},(_,i)=>({name:i===0?'Laluan':i===11?'Ruang kerja':`Bilik ${i+1}`,bounds,source:'ai'}));
+  const inputs=[...roots,...['Sirkulasi','Zon B','Zon C','Zon D','Zon E'].map(name=>({name,bounds,source:'ai',parentIndex:11}))];
+  const response=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:inputs});assert.equal(response.status,201);p=response.data;
+  assert.equal(p.nextRoomSequence,13);assert.equal(p.rooms[0].number,'0001');
+  const parent=p.rooms[11],children=p.rooms.slice(12);assert.equal(parent.nextSubSequence,6);
+  assert.deepEqual(children.map(room=>room.code),['a','b','c','d','e'].map(letter=>`D B1 0012${letter}`));assert.ok(children.every(room=>room.parentId===parent.id && room.number==='0012'));
+  assert.equal((await f.request(`/projects/${p.id}/rooms/${parent.id}`,'DELETE')).status,409);
+  assert.equal((await f.request(`/projects/${p.id}/rooms/${parent.id}`,'PATCH',{...parent,number:'0018'})).status,409);
+  assert.equal((await f.request(`/projects/${p.id}/rooms/${children[0].id}`,'PATCH',{...children[0],number:'0018'})).status,409);
+  p=(await f.request(`/projects/${p.id}/rooms/${children[1].id}`,'DELETE')).data;
+  const added=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Zon F',bounds,parentId:parent.id}]});assert.equal(added.status,201);p=added.data;assert.equal(p.rooms.at(-1).code,'D B1 0012f');assert.equal(p.nextRoomSequence,13);
+  p=(await f.request(`/projects/${p.id}/rooms/${children[0].id}`,'PATCH',{...children[0],name:'Sirkulasi utama',materials:{wall:'Bata',floor:'Jubin',ceiling:'Gipsum'}})).data;
+  assert.equal(p.rooms.find(room=>room.id===children[0].id).code,'D B1 0012a');
+  p=(await f.request(`/projects/${p.id}/inspections`,'POST',{roomId:children[0].id,photoId:image.id,damageType:'Retak',description:'Retak dinding.',remedial:'Periksa.',severity:'Rendah',reviewed:true,inspector:'Ali',componentCodes:['33','25','13','11','00','00','00']})).data;
+  assert.equal(p.inspections[0].assetCode,'D B1 0012a 33 25 13 11 00 00 00');
+  const group=p.rooms.filter(room=>room.id===parent.id || room.parentId===parent.id).map(room=>room.id);
+  assert.equal((await f.request(`/projects/${p.id}/rooms`,'DELETE',{roomIds:group})).status,409);
+  await f.restart();assert.deepEqual((await f.request('/projects')).data[0],p);
+});
+
+test('invalid hierarchy imports fail atomically without consuming room numbers',async t=>{
+  const f=await fixture(t);let p=await f.project();const image=await f.upload();p=(await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id})).data;
+  const room={name:'Ruang',bounds:{x:0,y:0,width:20,height:20}};
+  for(const rooms of [[{...room,parentIndex:0}],[room,{...room,parentIndex:5}],[room,{...room,parentIndex:0},{...room,parentIndex:1}],[{...room,parentId:p.id}],[room,{...room,parentIndex:0,number:'0010'}]]) {
+    assert.equal((await f.request(`/projects/${p.id}/rooms`,'POST',{rooms})).status,400);
+    assert.deepEqual((await f.request('/projects')).data[0],p);
+  }
+  const added=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[room,{...room,parentIndex:0}]});assert.equal(added.status,201);p=added.data;
+  const ids=p.rooms.map(room=>room.id);assert.equal((await f.request(`/projects/${p.id}/rooms`,'DELETE',{roomIds:ids})).status,200);
+  const next=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[room]});assert.equal(next.data.rooms[0].number,'0002');
+});
+
 test('room resizing and materials persist with stable asset codes and preserve materials for older clients',async t=>{
   const f=await fixture(t);let p=await f.project();const image=await f.upload();
   await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});

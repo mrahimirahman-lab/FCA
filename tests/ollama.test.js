@@ -89,6 +89,22 @@ test('local plan filtering excludes symbol tags before review and leaves repeate
   const empty=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(empty.status,200);assert.equal(empty.data.rooms.length,0);assert.match(empty.data.notes,/disisihkan/);
 });
 
+test('local entrance hint uses exact image pixels and clockwise hierarchy guidance without provider-generated codes',async t=>{
+  const f=await localFixture(t);
+  assert.equal((await f.request(`/projects/${f.p.id}/plan/entrance`,'PUT',{planId:f.photo.id,entrance:{x:25,y:90}})).status,200);
+  f.state.output={rooms:[{name:'Laluan',bbox:[10,10,90,90],confidence:.7,parentIndex:null},{name:'Sirkulasi',bbox:[20,20,40,40],confidence:.7,parentIndex:0}],notes:'Controlled hierarchy.'};
+  const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(response.status,200);assert.equal(response.data.rooms[1].parentIndex,0);
+  const call=f.calls.find(call=>call.path==='/api/chat'),prompt=call.body.messages[0].content;
+  assert.match(prompt,/pintu masuk utama ditandakan/i);assert.match(prompt,/\{"x":25,"y":90\} dalam piksel/);assert.match(prompt,/ARA H|ARAH JAM/);assert.match(prompt,/parentIndex/);
+  assert.ok(call.body.format.properties.rooms.items.required.includes('parentIndex'));
+  const wide=await sharp({create:{width:3200,height:800,channels:3,background:'#fff'}}).png().toBuffer();let captured;
+  await analyzeOllama({kind:'plan',image:wide,entrance:{x:25,y:90},fetchImpl:async(url,options)=>{
+    if(url.endsWith('/api/show'))return new Response(JSON.stringify({capabilities:['vision']}));
+    captured=JSON.parse(options.body).messages[0].content;return new Response(JSON.stringify({done:true,done_reason:'stop',message:{content:JSON.stringify({rooms:[],notes:'Controlled.'})}}));
+  }});
+  assert.match(captured,/\{"x":400,"y":360\} dalam piksel/);
+});
+
 test('local readiness distinguishes missing, text-only and remote models and preserves manual workflow',async t=>{
   const f=await localFixture(t);
   for(const [state,status] of [[{missing:true},'model_missing'],[{missing:false,capabilities:['completion']},'vision_required'],[{capabilities:['completion','vision'],remote:true},'remote_model']]) {

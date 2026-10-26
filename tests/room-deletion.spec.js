@@ -32,7 +32,7 @@ test('checkbox selection deletes a reviewed batch, retains protected rooms and s
   await expect(dialog).toHaveCount(0);await expect(page.getByText('3 ruang dipadam.',{exact:true})).toBeVisible();
   const saved=await current(request,p.id);
   expect(saved).toEqual({...p,rooms:[p.rooms[3]]});
-  await page.reload();await page.getByRole('button',{name:'Pelan & daftar aset',exact:true}).click();
+  await page.reload();await page.getByLabel(await page.getByLabel('Projek aktif').isVisible()?'Projek aktif':'Tukar projek').selectOption(p.id);await page.getByRole('button',{name:'Pelan & daftar aset',exact:true}).click();
   await expect(page.locator('.room-row')).toHaveCount(1);await expect(page.locator('.room-row')).toContainText('Pejabat');
 });
 

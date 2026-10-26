@@ -1,5 +1,10 @@
 import { boundsSchema } from './domain.js';
 
+export function rotatePlanPoint({x,y},angle) {
+  const turn=(angle%360+360)%360;
+  return turn===90?{x:100-y,y:x}:turn===180?{x:100-x,y:100-y}:turn===270?{x:y,y:100-x}:{x,y};
+}
+
 // Clockwise quarter turns preserve rectangular room bounds without cropping.
 export function rotateRoomBounds(bounds,angle) {
   const {x,y,width,height}=bounds;
