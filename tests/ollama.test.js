@@ -79,6 +79,16 @@ test('local HTTP protocol supports plan and damage workflows without forwarding 
   assert.ok(f.calls.every(c=>c.authorization===undefined));assert.ok(!JSON.stringify(f.calls).includes('test-cloud-key-must-stay-unused'));
 });
 
+test('local plan filtering excludes symbol tags before review and leaves repeated real room labels intact',async t=>{
+  const f=await localFixture(t);
+  f.state.output={rooms:['BILIK 1','BILIK 2','RUANG TAMU','DAPUR','TANDAS','DAPUR','T1','T2','P1','P2','P3'].map((name,i)=>({name,bbox:[i*8,5,i*8+5,15],confidence:.7})),notes:'Controlled symbol confusion.'};
+  const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(response.status,200);
+  assert.deepEqual(response.data.rooms.map(room=>room.name),['BILIK 1','BILIK 2','RUANG TAMU','DAPUR','TANDAS','DAPUR']);assert.match(response.data.notes,/5 cadangan simbol/);
+  assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+  f.state.output={rooms:f.state.output.rooms.slice(6),notes:'Only symbols.'};
+  const empty=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(empty.status,200);assert.equal(empty.data.rooms.length,0);assert.match(empty.data.notes,/disisihkan/);
+});
+
 test('local readiness distinguishes missing, text-only and remote models and preserves manual workflow',async t=>{
   const f=await localFixture(t);
   for(const [state,status] of [[{missing:true},'model_missing'],[{missing:false,capabilities:['completion']},'vision_required'],[{capabilities:['completion','vision'],remote:true},'remote_model']]) {

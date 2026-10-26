@@ -1,6 +1,6 @@
 import { aiRoomsSchema, aiDamageSchema } from './domain.js';
 import { analysisPrompt, roomOutput, damageOutput } from './ai-contract.js';
-import {warnOverlappingRooms} from './plan-vision.js';
+import {reviewPlanRooms} from './plan-vision.js';
 
 
 export async function analyzeImage({ kind, image, key, model, roomName = '', targetRoom,fetchImpl = fetch }) {
@@ -34,6 +34,6 @@ export async function analyzeImage({ kind, image, key, model, roomName = '', tar
     const choice = result.choices?.[0];
     if (choice?.finish_reason !== 'stop' || choice.message?.refusal) throw new Error();
     const parsed=(kind === 'plan' ? aiRoomsSchema : aiDamageSchema).parse(JSON.parse(choice.message.content));
-    return kind==='plan'?warnOverlappingRooms(parsed):parsed;
+    return kind==='plan'?reviewPlanRooms(parsed,{targetRoom}):parsed;
   } catch { throw Object.assign(new Error('Jawapan AI tidak lengkap atau tidak sah. Tiada hasil disimpan; cuba semula atau isi secara manual.'), { status: 502 }); }
 }

@@ -281,6 +281,23 @@ test('DAK uses four-digit room locations and seven component levels from the sup
   assert.equal((await f.request('/projects','POST',{name:'Aras 4',building:'D',floor:'04'})).status,201);
 });
 
+test('AI imports reject drawing symbols atomically while manual room conventions remain available',async t=>{
+  const f=await fixture(t);let p=await f.project();const image=await f.upload();
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  const bounds={x:5,y:5,width:10,height:10};
+  const rejected=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Bilik 1',bounds,source:'ai'},{name:'T1',bounds,source:'ai'}]});
+  assert.equal(rejected.status,422);assert.match(rejected.data.error,/Nyahpilih/);p=(await f.request('/projects')).data[0];assert.equal(p.rooms.length,0);assert.equal(p.nextRoomSequence,1);
+  const manual=await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'T1',bounds,source:'manual'}]});
+  assert.equal(manual.status,201);assert.equal(manual.data.rooms[0].number,'0001');
+});
+
+test('cloud plan adapter excludes door/window symbols before returning room proposals',async()=>{
+  const bounds={x:5,y:5,width:10,height:10};
+  const output={rooms:['Bilik 1','T1','P2'].map(name=>({name,bounds,confidence:.7})),notes:'Controlled response.'};
+  const result=await analyzeImage({kind:'plan',image:Buffer.from('test'),key:'test-placeholder',model:'test-model',fetchImpl:async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(output)}}]}))});
+  assert.deepEqual(result.rooms,[output.rooms[0]]);assert.match(result.notes,/T1, P2/);
+});
+
 test('AI adapter checks complete structured output and rejects invalid/refused provider results',async () => {
   const valid={damageType:'Retak',description:'Retak kelihatan.',remedial:'Periksa di tapak.',severity:'Sederhana',confidence:.7,limitations:'Foto sahaja.'};
   const mock=(content,finish_reason='stop') => async () => new Response(JSON.stringify({choices:[{finish_reason,message:{content:JSON.stringify(content)}}]}),{status:200});

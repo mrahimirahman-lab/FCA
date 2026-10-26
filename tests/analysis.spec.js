@@ -75,3 +75,32 @@ test('connection and invalid-response failures stay visible without crashing the
   expect((await(await request.get('/api/projects')).json()).find(item=>item.id===p.id).rooms).toHaveLength(0);
   expect(errors).toEqual([]);expect(calls).toBe(2);
 });
+
+test('room suggestions can be selected individually including repeated names and only chosen rooms are imported',async({page,request},info)=>{
+  const p=await setup(page,request,info.project.name==='desktop'?'PG':'PH');
+  const names=['BILIK 1','BILIK 2','RUANG TAMU','DAPUR','TANDAS','DAPUR'];
+  const resultData={rooms:names.map((name,i)=>({name,bounds:{x:i*15,y:10,width:10,height:15},confidence:.7})),notes:'5 cadangan simbol pintu/tingkap disisihkan: T1, T2, P1, P2, P3. Label ini tidak diimport sebagai ruang.'};
+  await page.route(`**/api/projects/${p.id}/analyze/plan`,route=>route.fulfill({contentType:'application/json',body:JSON.stringify(resultData)}));
+  await page.getByRole('button',{name:'Analisis pelan',exact:true}).click();
+  const result=page.getByRole('region',{name:'Keputusan analisis pelan'});
+  await expect(result).toContainText('6 daripada 6 cadangan dipilih');
+  await expect(result.getByRole('checkbox')).toHaveCount(7);
+  await result.getByLabel('Pilih semua cadangan').uncheck();
+  await expect(result.getByRole('button',{name:'Import untuk semakan'})).toBeDisabled();
+  await result.getByLabel('Import cadangan 2: BILIK 2',{exact:true}).check();
+  await result.getByLabel('Import cadangan 6: DAPUR',{exact:true}).check();
+  await expect(result.getByLabel('Import cadangan 4: DAPUR',{exact:true})).not.toBeChecked();
+  await expect(result).toContainText('2 daripada 6 cadangan dipilih');
+  expect((await(await request.get('/api/projects')).json()).find(item=>item.id===p.id).rooms).toHaveLength(0);
+  await page.route(`**/api/projects/${p.id}/rooms`,route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({error:'Import ujian gagal. Tiada ruang disimpan.'})}),{times:1});
+  await result.getByRole('button',{name:'Import untuk semakan'}).click();
+  await expect(page.getByRole('alert')).toContainText('Import ujian gagal');
+  await expect(result.getByLabel('Import cadangan 6: DAPUR',{exact:true})).toBeChecked();
+  await expect(result).toContainText('2 daripada 6 cadangan dipilih');
+  await result.getByRole('button',{name:'Import untuk semakan'}).click();
+  await expect(result).toHaveCount(0);
+  const saved=(await(await request.get('/api/projects')).json()).find(item=>item.id===p.id);
+  expect(saved.rooms.map(room=>room.name)).toEqual(['BILIK 2','DAPUR']);
+  expect(saved.rooms.map(room=>room.number)).toEqual(['0001','0002']);
+  expect(saved.rooms[1].bounds).toEqual(resultData.rooms[5].bounds);
+});

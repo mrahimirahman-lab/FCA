@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import { aiRoomsSchema, aiDamageSchema } from './domain.js';
 import { analysisPrompt, localPlanPrompt, localRoomOutput, localDamageOutput } from './ai-contract.js';
-import {warnOverlappingRooms} from './plan-vision.js';
+import {reviewPlanRooms} from './plan-vision.js';
 
 export const DEFAULT_LOCAL_MODEL='qwen2.5vl:3b';
 export const DEFAULT_LOCAL_URL='http://127.0.0.1:11434';
@@ -34,7 +34,7 @@ function validationDetails(kind,issues,imageSize) {
   return [...new Set(messages)].slice(0,3).join(' ');
 }
 
-function parseLocalPlan(output,{width,height}) {
+function parseLocalPlan(output,{width,height},targetRoom) {
   // Validate the explicitly requested coordinate system. Never infer units from
   // value magnitude, reorder corners or clamp boxes to make output pass.
   const bbox=z.array(z.number().int().min(0)).length(4).superRefine((box,ctx)=>{
@@ -51,7 +51,7 @@ function parseLocalPlan(output,{width,height}) {
   }))};
   const parsed=aiRoomsSchema.safeParse(converted);
   if(!parsed.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails('plan',parsed.error.issues)}`);
-  return warnOverlappingRooms(parsed.data);
+  return reviewPlanRooms(parsed.data,{targetRoom});
 }
 
 function invalidOutput(message) {
@@ -116,7 +116,7 @@ export async function analyzeOllama({kind,image,roomName='',targetRoom,model=DEF
   let output;
   try {output=JSON.parse(result.message.content);}
   catch {throw invalidOutput('Jawapan AI tempatan bukan JSON yang sah.');}
-  if(kind==='plan')return parseLocalPlan(output,imageSize);
+  if(kind==='plan')return parseLocalPlan(output,imageSize,targetRoom);
   const parsed=aiDamageSchema.safeParse(output);
   if(!parsed.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails(kind,parsed.error.issues)}`);
   return parsed.data;

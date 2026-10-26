@@ -77,6 +77,14 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 Untuk papan kekunci, fokus pada kotak atau pemegang dan tekan anak panah untuk langkah 1%; tahan Shift untuk langkah 0.1%. Peratus menunjukkan lokasi/saiz relatif pada gambar; meter dan m² memerlukan ukuran manual atau skala rujukan. Maklumat bahan ialah catatan pemeriksa dan boleh dilengkapkan kemudian bagi ruang lama.
 
+### Menyemak cadangan AI sebelum import
+
+Selepas **Analisis pelan**, setiap cadangan mempunyai kotak pilihan. Nyahpilih simbol, perabot atau kawasan yang bukan ruang sebelum klik **Import untuk semakan**. **Pilih semua cadangan** menanda atau mengosongkan semua pilihan. Bilangan dipilih dipaparkan; butang import dinyahaktifkan jika tiada pilihan. Hanya cadangan bertanda akan diberi nombor aset dan dimasukkan ke daftar. Jika import gagal, pilihan dikekalkan untuk anda semak dan cuba semula.
+
+Penapis aplikasi menyisihkan label penuh yang menyerupai tag pintu/tingkap seperti `P1`, `P2`, `T1`, `T2`, `Pintu P1` atau `Window W01`, dan menyatakan label yang disisihkan dalam nota. Pelayan turut menolak import AI yang masih mengandungi label simbol tersebut. Ini penapis nama, bukan pengesahan geometri atau latihan semula model: simbol yang diberi nama lain oleh AI masih memerlukan semakan manusia. Nama seperti **Bilik T1** dikekalkan. Jika organisasi menggunakan `T1` sebagai nama ruang sebenar, ruang itu boleh didaftarkan secara manual; semakan sempadan AI bagi ruang manual tersebut masih tersedia.
+
+Dua ruang berasingan boleh mempunyai nama sama, contohnya **Dapur**. Aplikasi mengekalkan kedua-dua cadangan supaya pemeriksa boleh membandingkan lokasi dan dinding; ia tidak menggabungkan atau memadam cadangan hanya kerana namanya sama. Hasil ini tidak mengubah rekod lama yang sudah diimport; gunakan pilihan pemadaman ruang untuk membersihkan rekod yang salah.
+
 ### Memilih dan memadam ruang
 
 - Dalam **Daftar ruang**, tanda kotak pilihan bagi ruang yang hendak dipadam, kemudian klik **Padam pilihan (bilangan)**. Anda boleh memilih beberapa ruang atau semua ruang tanpa pemeriksaan. Carian membantu mengecilkan senarai; **Pilih semua hasil carian** hanya menanda hasil tersebut, sementara pilihan terdahulu di luar carian kekal dipilih. **Kosongkan pilihan** membuang semua tanda.

@@ -11,6 +11,7 @@ import { analyzeConfiguredImage, providerSettings, providerHealth } from './ai-p
 import { convertDwg } from './cad.js';
 import { rotateRoomBounds } from './plan.js';
 import {makePlanScale,rotatePlanScale} from './measurements.js';
+import {isPlanSymbolLabel} from './plan-vision.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5 } });
 const cadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 0 } });
@@ -132,6 +133,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     if (!p.plan) throw Object.assign(new Error('Muat naik pelan dahulu.'), { status: 409 });
     checkPlanVersion(p,req.body.planId);
     const inputs = z.array(roomSchema).min(1).max(100).parse(req.body.rooms);
+    if(inputs.some(room=>room.source==='ai' && isPlanSymbolLabel(room.name)))throw Object.assign(new Error('Cadangan AI mengandungi label simbol pintu/tingkap, bukan ruang. Nyahpilih label tersebut sebelum import. Tiada ruang disimpan.'),{status:422});
     if(p.rooms.length && inputs.some(room=>room.source==='ai'))throw Object.assign(new Error('Ruang sudah didaftarkan. Import AI berulang disekat supaya rekod tidak berganda; gunakan Semak sempadan AI pada ruang sedia ada.'),{status:409});
     const reserved = new Set(p.rooms.map(r => r.number));
     for (const input of inputs.filter(r => r.number)) { if (reserved.has(input.number)) throw Object.assign(new Error('Kod ruang sudah digunakan pada aras ini.'), { status: 409 }); reserved.add(input.number); }

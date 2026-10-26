@@ -1,6 +1,22 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {warnOverlappingRooms} from '../server/plan-vision.js';
+import {warnOverlappingRooms,reviewPlanRooms,isPlanSymbolLabel} from '../server/plan-vision.js';
+
+test('symbol filtering removes whole door/window labels and preserves real rooms including repeated names',()=>{
+  for(const name of ['T1','T2','P1','P2','P3',' t-01 ','(P 2)','T1 / T2','Tingkap T1','Pintu P3','Window W01','Door type D2','Tingkap','Pintu'])assert.equal(isPlanSymbolLabel(name),true,name);
+  for(const name of ['BILIK 1','Bilik T1','Stor pintu','Ruang tingkap','Pejabat','P101A','PT1','Taman','Bilik P1','DAPUR'])assert.equal(isPlanSymbolLabel(name),false,name);
+  const names=['BILIK 1','BILIK 2','RUANG TAMU','DAPUR','TANDAS','DAPUR','T1','T2','P1','P2','P3'];
+  const source={rooms:names.map((name,i)=>({name,bounds:{x:i*8,y:5,width:5,height:10},confidence:.7})),notes:'Semak dinding.'},copy=structuredClone(source);
+  const reviewed=reviewPlanRooms(source);
+  assert.deepEqual(reviewed.rooms,copy.rooms.slice(0,6));assert.match(reviewed.notes,/5 cadangan simbol pintu\/tingkap disisihkan: T1, T2, P1, P2, P3/);assert.deepEqual(source,copy);
+  const empty=reviewPlanRooms({rooms:source.rooms.slice(6),notes:''});assert.equal(empty.rooms.length,0);assert.match(empty.notes,/disisihkan/);
+  const focused={rooms:[source.rooms[6]],notes:'Semakan ruang manual.'};assert.deepEqual(reviewPlanRooms(focused,{targetRoom:{name:'T1'}}),focused);
+});
+
+test('filter and overlap notes stay within the response contract with long provider notes',()=>{
+  const source={rooms:['T1','Bilik 1','Bilik 2'].map(name=>({name,bounds:{x:10,y:10,width:20,height:20},confidence:.7})),notes:'x'.repeat(4000)};
+  const result=reviewPlanRooms(source);assert.equal(result.rooms.length,2);assert.ok(result.notes.length<=4000);assert.match(result.notes,/simbol pintu\/tingkap/);assert.match(result.notes,/bertindih/);
+});
 
 test('significant overlapping proposals are flagged without shrinking, deleting or moving room boxes',()=>{
   const a={name:'Bilik',confidence:.7,bounds:{x:10,y:10,width:30,height:40}};
