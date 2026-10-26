@@ -126,6 +126,19 @@ test('local invalid output fails without saving rooms',async t=>{
   assert.equal((await f.request('/projects')).data[0].rooms.length,0);
 });
 
+test('101 AI proposals are rejected and existing rooms cannot accumulate repeated AI imports',async t=>{
+  const f=await localFixture(t);
+  f.state.output={rooms:Array.from({length:101},(_,i)=>({...pixelPlan.rooms[0],name:`Ruang ${i+1}`})),notes:'Controlled overgeneration.'};
+  const over=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(over.status,502);assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+  f.state.output=pixelPlan;
+  const imported=await f.request(`/projects/${f.p.id}/rooms`,'POST',{rooms:[{...plan.rooms[0],source:'ai'}]});assert.equal(imported.status,201);
+  assert.equal((await f.request(`/projects/${f.p.id}/rooms`,'POST',{rooms:[{...plan.rooms[0],source:'ai'}]})).status,409);
+  const calls=f.calls.filter(c=>c.path==='/api/chat').length;
+  assert.equal((await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{})).status,409);assert.equal(f.calls.filter(c=>c.path==='/api/chat').length,calls);
+  assert.deepEqual((await f.request('/projects')).data[0],imported.data);
+  assert.equal((await f.request(`/projects/${f.p.id}/rooms`,'POST',{rooms:[{name:'Tambahan manual',bounds:{x:50,y:50,width:20,height:20}}]})).status,201);
+});
+
 test('local validation identifies invalid confidence and missing fields without exposing model text or partially saving rooms',async t=>{
   const f=await localFixture(t);
   for(const [output,detail] of [
@@ -156,7 +169,8 @@ test('local pixel corners use the exact resized PNG dimensions for wide, tall an
       const scale=Math.min(1,1600/width,1600/height);
       assert.equal(sent.width,Math.round(width*scale));assert.equal(sent.height,Math.round(height*scale));
       assert.match(body.messages[0].content,new RegExp(`${sent.width} piksel lebar dan ${sent.height} piksel tinggi`));
-      if(width>400)assert.match(body.messages[0].content,/Grid BIRU/);
+      const pixels=await sharp(Buffer.from(body.messages[0].images[0],'base64')).stats();
+      assert.ok(pixels.channels.every(channel=>channel.min===255 && channel.max===255),'No synthetic grid or labels should be added to the inference image');
       assert.equal(body.format.properties.rooms.items.properties.bbox.items.maximum,Math.max(sent.width,sent.height));
       return new Response(JSON.stringify({done:true,done_reason:'stop',message:{content:JSON.stringify({...pixelPlan,rooms:[{...pixelPlan.rooms[0],bbox}]})}}));
     }});

@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import { aiRoomsSchema, aiDamageSchema } from './domain.js';
 import { analysisPrompt, localPlanPrompt, localRoomOutput, localDamageOutput } from './ai-contract.js';
-import {addPlanGrid,warnOverlappingRooms} from './plan-vision.js';
+import {warnOverlappingRooms} from './plan-vision.js';
 
 export const DEFAULT_LOCAL_MODEL='qwen2.5vl:3b';
 export const DEFAULT_LOCAL_URL='http://127.0.0.1:11434';
@@ -87,16 +87,15 @@ export async function analyzeOllama({kind,image,roomName='',targetRoom,model=DEF
   if (!state.ready) throw Object.assign(new Error(state.message),{status:503});
   // Use the exact dimensions of the PNG sent to the model, after resizing.
   const {data:png,info:imageSize}=await sharp(image).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toBuffer({resolveWithObject:true});
-  const guided=kind==='plan'?await addPlanGrid(png,imageSize):{png,hasGrid:false};
   const schema=kind==='plan'?localRoomOutput(imageSize.width,imageSize.height,targetRoom):localDamageOutput;
-  const prompt=kind==='plan'?localPlanPrompt(imageSize.width,imageSize.height,targetRoom,guided.hasGrid):analysisPrompt(kind,roomName);
+  const prompt=kind==='plan'?localPlanPrompt(imageSize.width,imageSize.height,targetRoom):analysisPrompt(kind,roomName);
   let response,result;
   try {
     response=await fetchImpl(`${config.baseUrl}/api/chat`,{
       method:'POST',redirect:'error',signal:AbortSignal.timeout(config.timeoutMs),
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:config.model,stream:false,format:schema,keep_alive:'5m',
-        messages:[{role:'user',content:`${prompt}\nPulangkan satu objek JSON sahaja mengikut skema ini: ${JSON.stringify(schema)}`,images:[guided.png.toString('base64')]}],
+        messages:[{role:'user',content:`${prompt}\nPulangkan satu objek JSON sahaja mengikut skema ini: ${JSON.stringify(schema)}`,images:[png.toString('base64')]}],
         // Leave room for the image/prompt as well as a complete plan response.
         // Damage requests retain the smaller context to limit memory use.
         options:{temperature:0,num_ctx:kind==='plan'?16384:8192,num_predict:kind==='plan'?8192:5000}}),

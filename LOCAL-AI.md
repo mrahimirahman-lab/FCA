@@ -80,7 +80,7 @@ Untuk kembali ke OpenAI, tetapkan `INSPECTION_AI_PROVIDER=openai` dan sediakan k
 
 ## Semak sempadan dan kemas kini aplikasi
 
-Arahan analisis kini meminta kotak mengikut muka dalam dinding bilik serta mengabaikan garisan dimensi, paksi dan tag pintu/tingkap. Ollama menerima imej dengan grid piksel biru bertitik sebagai pembaris sementara; grid bukan dinding dan bukan petak untuk diikuti. Dimensi imej dan koordinat kekal sama, dan fail pelan asal tidak ditulis semula. Pertindihan ketara antara kotak cadangan ditandakan untuk semakan.
+Arahan analisis kini meminta kotak mengikut muka dalam dinding bilik serta mengabaikan garisan dimensi, paksi dan tag pintu/tingkap. Ollama menerima imej pelan tanpa grid tambahan. Grid panduan 10×10 daripada versi terdahulu telah dibuang untuk mengelakkan petak tiruan dianggap sebagai bilik. Nisbah aspek dikekalkan semasa pengecilan dan fail pelan asal tidak ditulis semula. Pertindihan ketara antara kotak cadangan ditandakan untuk semakan.
 
 Untuk ruang yang sudah diimport, gunakan **Butiran ruang → Semak sempadan AI**. Model memfokus satu ruang, dan hasilnya hanya dipaparkan dalam draf sebelum **Simpan**. Nama/kod aset, material dan rekod pemeriksaan dikekalkan. Jika hasil masih tidak tepat, laras pemegang secara manual. Pembaikan ini mengubah prompt dan input visual, bukan melatih semula model atau menjamin segmentasi dinding tepat.
 
