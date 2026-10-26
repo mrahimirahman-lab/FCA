@@ -37,12 +37,16 @@ API dan binaan web dilayan pada port 3001, terikat kepada `127.0.0.1`. Semak kes
 
 1. Cipta projek untuk satu bangunan dan aras. Pasangan kod bangunan–aras mestilah unik.
 2. Muat naik DWG, PDF atau imej. DWG dibaca secara tempatan sebagai paparan 2D Model Space; semak hasil penukaran sebelum menanda ruang. Bagi PDF, pilih halaman yang mewakili aras tersebut **sebelum** menambah ruang. Satu projek menggunakan satu paparan pelan; cipta projek aras lain untuk halaman atau pelan lain.
-3. Tambah ruang dengan klik pada pelan, atau analisis dengan AI dan import cadangan. Edit nama, sempadan peratus dan pengesahan ruang.
+3. Tambah ruang dengan klik pada pelan, atau analisis dengan AI dan import cadangan. Pilih ruang, seret kotak untuk mengalihkannya atau pemegang penjuru/tepi untuk mengubah saiz. Isi nama, material dinding/lantai/siling dan pengesahan ruang, kemudian klik **Simpan**. Nilai koordinat peratus masih boleh diisi terus.
 4. Pilih ruang, ambil atau muat naik foto, isi dapatan secara manual atau gunakan analisis AI. Semak jenis kerosakan, deskripsi, keutamaan dan remedial work.
 5. Masukkan nama pemeriksa dan sahkan rekod. Rekod boleh disimpan sebagai draf dan diedit kemudian melalui laporan.
 6. Tapis rekod, eksport CSV atau gunakan Cetak / PDF untuk laporan bergambar. Draf dilabel dengan jelas.
 
 Pada **Pelan & daftar aset → Orientasi pelan**, gunakan **Kiri 90°**, **Kanan 90°** atau **Putar 180°** untuk membetulkan pelan JPG/PNG, halaman PDF yang dipilih atau paparan DWG. Putaran disimpan pada imej pelan dan digunakan semasa analisis AI. Sempadan ruang sedia ada turut diputar; kod aset dan rekod pemeriksaan dikekalkan. Cadangan AI yang belum diimport dibersihkan selepas putaran berjaya supaya koordinat lama tidak digunakan. Fail DWG asal dan foto pemeriksaan dikekalkan. Kawalan ini menyokong putaran suku/pusingan separuh, bukan pelurusan sudut kecil untuk foto senget.
+
+Pelarasan ruang menyokong tetikus, sentuhan dan papan kekunci: fokus pada kotak atau pemegang, gunakan anak panah (1%) atau Shift + anak panah (0.1%). Seretan dihadkan dalam imej dan tidak boleh mengecilkan ruang kepada saiz sifar. Kotak yang dipaparkan ialah draf sehingga **Simpan** berjaya; ralat simpanan mengekalkan draf untuk dicuba semula. Saiz ini relatif kepada imej, bukan ukuran meter atau keluasan fizikal.
+
+Material setiap ruang boleh dipilih daripada cadangan atau ditaip sendiri, termasuk kemasan; setiap medan maksimum 200 aksara dan boleh dikosongkan. Rekod lama tidak memerlukan migrasi dan medan belum diisi dipaparkan sebagai **Belum direkodkan**. Pemeriksaan, laporan cetak/PDF dan CSV memaparkan **material ruang semasa** daripada daftar ruang, bukan snapshot material pada tarikh pemeriksaan. Material dimasukkan/disemak oleh pemeriksa; aplikasi tidak menganggapnya sebagai pengenalpastian bahan oleh AI.
 
 ## Struktur kod DAK
 

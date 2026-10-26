@@ -16,8 +16,43 @@ async function fixture(t, options = {}) {
   const request = async (url, method = 'GET', body, headers = {}) => { const response = await fetch(`http://127.0.0.1:${server.address().port}/api${url}`, {method,headers: body instanceof FormData ? headers : {'Content-Type':'application/json',...headers},body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)}); return {status:response.status,data:await response.json()}; };
   const upload = async () => { const buffer = await sharp({create:{width:100,height:80,channels:3,background:'#ffffff'}}).png().toBuffer(); const form = new FormData();form.append('image',new Blob([buffer],{type:'image/png'}),'plan.png');const result=await request('/uploads','POST',form);assert.equal(result.status,201);return result.data; };
   const project = async () => { const result=await request('/projects','POST',{name:'Blok A',building:'d',floor:'b1'}); assert.equal(result.status,201);return result.data; };
-  return {request,upload,project,origin:()=>`http://127.0.0.1:${server.address().port}`,restart:async () => {await new Promise(resolve => server.close(resolve));server=await start();}};
+  return {request,upload,project,dataDir,origin:()=>`http://127.0.0.1:${server.address().port}`,restart:async () => {await new Promise(resolve => server.close(resolve));server=await start();}};
 }
+
+test('room resizing and materials persist with stable asset codes and preserve materials for older clients',async t=>{
+  const f=await fixture(t);let p=await f.project();const image=await f.upload();
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  p=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Pejabat',bounds:{x:10,y:20,width:30,height:40},materials:{wall:'  Bata berlepa + cat  ',floor:'Jubin seramik',ceiling:'Papan gipsum'}}]})).data;
+  const room=p.rooms[0];assert.deepEqual(room.materials,{wall:'Bata berlepa + cat',floor:'Jubin seramik',ceiling:'Papan gipsum'});
+  p=(await f.request(`/projects/${p.id}/inspections`,'POST',{roomId:room.id,photoId:image.id,damageType:'Retak',description:'Retak kelihatan.',remedial:'Periksa di tapak.',severity:'Rendah',reviewed:true,inspector:'Ali'})).data;
+  const inspection=p.inspections[0];
+  const response=await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...room,bounds:{x:5,y:15,width:45,height:50},materials:{wall:'Panel komposit khas',floor:'Vinil',ceiling:''},planId:p.plan.id});
+  assert.equal(response.status,200);p=response.data;
+  assert.equal(p.rooms[0].code,room.code);assert.equal(p.rooms[0].id,room.id);assert.deepEqual(p.inspections,[inspection]);
+  const {materials,...oldClient}=p.rooms[0];
+  p=(await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...oldClient,name:'Pejabat baharu'})).data;
+  assert.deepEqual(p.rooms[0].materials,materials);
+  for(const invalid of [{...materials,wall:'x'.repeat(201)},{wall:5},{floor:null}]) {
+    const bad=await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...p.rooms[0],materials:invalid});assert.equal(bad.status,400);
+    assert.deepEqual((await f.request('/projects')).data[0],p);
+  }
+  assert.equal((await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...p.rooms[0],bounds:{x:90,y:0,width:50,height:40}})).status,400);
+  p=(await f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle:90,planId:p.plan.id})).data;
+  assert.deepEqual(p.rooms[0].materials,materials);assert.deepEqual(p.inspections,[inspection]);
+  await f.restart();assert.deepEqual((await f.request('/projects')).data[0],p);
+});
+
+test('legacy rooms without materials remain editable and accept partial material registration',async t=>{
+  const f=await fixture(t);const p=await f.project();const image=await f.upload();
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  const room=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Lama',bounds:{x:0,y:0,width:20,height:20}}]})).data.rooms[0];
+  assert.deepEqual(room.materials,{wall:'',floor:'',ceiling:''});
+  const file=path.join(f.dataDir,'database.json');const db=JSON.parse(fs.readFileSync(file,'utf8'));delete db.projects[0].rooms[0].materials;fs.writeFileSync(file,JSON.stringify(db));await f.restart();
+  const legacy=(await f.request('/projects')).data[0].rooms[0];assert.equal(legacy.materials,undefined);
+  const result=await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...legacy,bounds:{x:1,y:2,width:30,height:40},materials:{ceiling:'Konkrit terdedah'}});
+  assert.equal(result.status,200);assert.deepEqual(result.data.rooms[0].materials,{wall:'',floor:'',ceiling:'Konkrit terdedah'});
+  assert.equal(result.data.rooms[0].code,room.code);
+});
 
 test('hosting password protects application, records and images while health checks stay public',async t=>{
   const f=await fixture(t,{accessUser:'inspector',accessPassword:'test-password-only',aiKey:'test-placeholder'});

@@ -67,6 +67,18 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 ## Rekod, gambar dan sandaran
 
+### Laras kotak ruang dan daftar material
+
+1. Dalam **Pelan & daftar aset**, klik **Tambah ruang** dan klik lokasi pada pelan.
+2. Pilih kotak atau nama ruang. Seret pemegang di penjuru/tepi untuk membesar atau mengecilkan kotak; seret bahagian dalam kotak untuk mengalihkannya. Pada telefon, gunakan sentuhan yang sama. Nilai Kiri/Atas/Lebar/Tinggi (%) berubah bersama seretan dan juga boleh diisi terus.
+3. Dalam **Butiran ruang**, isi **Material dinding**, **Material lantai** dan **Material siling**. Pilih cadangan atau taip material/kemasan lain, contohnya `Bata berlepa + cat`.
+4. Klik **Simpan**. Tunggu mesej **Maklumat ruang disimpan**. Pelarasan dan material kekal selepas muat semula; kod ruang/aset kekal sama apabila hanya saiz/material diubah.
+5. Maklumat material semasa turut dipaparkan apabila memilih ruang untuk pemeriksaan, dalam laporan cetak/PDF dan eksport CSV. Medan kosong dilabel **Belum direkodkan** dalam paparan; nilai kosong dalam CSV.
+
+Untuk papan kekunci, fokus pada kotak atau pemegang dan tekan anak panah untuk langkah 1%; tahan Shift untuk langkah 0.1%. Peratus menunjukkan lokasi/saiz relatif pada gambar, bukan keluasan sebenar. Maklumat bahan ialah catatan pemeriksa dan boleh dilengkapkan kemudian bagi ruang lama.
+
+### Lokasi fail dan orientasi
+
 Untuk membetulkan orientasi drawing, buka **Pelan & daftar aset** selepas memuat naik pelan. Di atas gambar, gunakan **Kiri 90°**, **Kanan 90°** atau **Putar 180°**. Setiap klik menyimpan putaran; tunggu mesej **Orientasi disimpan** sebelum meneruskan. Analisis AI menggunakan orientasi yang disimpan. Kedudukan ruang sedia ada diselaraskan bersama putaran dan kod aset kekal sama. Bagi PDF, kawalan ini memutar halaman yang sedang digunakan; memilih halaman PDF lain memulakan orientasi halaman baharu. Butang **Fail asal** untuk DWG masih memuat turun fail sumber asal.
 
 Fungsi orientasi melibatkan kod pelayan dan paparan web. Apabila menaik taraf daripada versi lama, gunakan langkah **Mengemas kini daripada ZIP GitHub tanpa kehilangan data** di atas, termasuk `npm run build` sebelum `npm start`.

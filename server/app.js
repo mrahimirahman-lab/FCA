@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
-import { projectSchema, roomSchema, roomNumberSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
+import { projectSchema, roomSchema, roomUpdateSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
 import { analyzeConfiguredImage, providerSettings, providerHealth } from './ai-provider.js';
 import { convertDwg } from './cad.js';
 import { rotateRoomBounds } from './plan.js';
@@ -134,7 +134,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     const p = project(req); const room = p.rooms.find(r => r.id === req.params.roomId);
     if (!room) throw Object.assign(new Error('Ruang tidak ditemui.'), { status: 404 });
     checkPlanVersion(p,req.body.planId);
-    const update = roomSchema.pick({ name: true, bounds: true }).extend({ number: roomNumberSchema, reviewed: z.boolean() }).parse(req.body);
+    const update = roomUpdateSchema.parse(req.body);
     if (p.rooms.some(r => r.id !== room.id && r.number === update.number)) throw Object.assign(new Error('Kod ruang sudah digunakan pada aras ini.'), { status: 409 });
     if (room.number !== update.number && p.inspections.some(i => i.roomId === room.id)) throw Object.assign(new Error('Kod ruang yang mempunyai pemeriksaan dikunci untuk mengekalkan rujukan rekod.'), { status: 409 });
     Object.assign(room, update, { code: assetCode(p,update.number) }); persist(); res.json(p);
