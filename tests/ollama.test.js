@@ -16,7 +16,7 @@ const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolv
 const stop=server=>new Promise(resolve=>server.close(resolve));
 
 async function localFixture(t) {
-  const calls=[],state={capabilities:['completion','vision'],missing:false,remote:false,bad:false};
+  const calls=[],state={capabilities:['completion','vision'],missing:false,remote:false,bad:false,output:undefined};
   const ollama=http.createServer(async(req,res)=>{
     try {
       const chunks=[];for await(const chunk of req)chunks.push(chunk);
@@ -27,7 +27,7 @@ async function localFixture(t) {
         res.end(JSON.stringify({capabilities:state.capabilities,...(state.remote?{remote_host:'https://example.invalid'}:{})}));return;
       }
       if(req.url==='/api/chat') {
-        const result=state.bad?{rooms:[{name:'Bad',confidence:.5,bounds:{x:99,y:0,width:20,height:20}}],notes:''}:body.format.properties.rooms?plan:damage;
+        const result=state.output??(state.bad?{rooms:[{name:'Bad',confidence:.5,bounds:{x:99,y:0,width:20,height:20}}],notes:''}:body.format.properties.rooms?plan:damage);
         res.end(JSON.stringify({done:true,done_reason:'stop',message:{role:'assistant',content:JSON.stringify(result)}}));return;
       }
       res.statusCode=404;res.end('{}');
@@ -62,7 +62,13 @@ test('local HTTP protocol supports plan and damage workflows without forwarding 
     assert.equal(call.body.model,'qwen2.5vl:3b');assert.equal(call.body.stream,false);assert.equal(call.body.options.temperature,0);
     assert.equal(call.body.messages[0].images.length,1);assert.equal(call.body.format.type,'object');
     const decoded=Buffer.from(call.body.messages[0].images[0],'base64');assert.equal((await sharp(decoded).metadata()).format,'png');
+    const confidence=call.body.format.properties.rooms?call.body.format.properties.rooms.items.properties.confidence:call.body.format.properties.confidence;
+    assert.equal(confidence.minimum,0);assert.equal(confidence.maximum,1);
+    assert.match(call.body.messages[0].content,/bukan 80/);
   }
+  const bounds=chats[0].body.format.properties.rooms.items.properties.bounds;
+  assert.equal(bounds.properties.x.maximum,100);assert.equal(bounds.properties.width.exclusiveMinimum,0);
+  assert.match(chats[0].body.messages[0].content,/x \+ width <= 100/);
   assert.ok(f.calls.every(c=>c.authorization===undefined));assert.ok(!JSON.stringify(f.calls).includes('test-cloud-key-must-stay-unused'));
 });
 
@@ -90,7 +96,44 @@ test('local settings reject external destinations, redirects, cloud tags and unk
 test('local invalid output fails without saving rooms',async t=>{
   const f=await localFixture(t);f.state.bad=true;
   const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});assert.equal(response.status,502);assert.match(response.data.error,/tidak sah/);
+  assert.match(response.data.error,/Ruang 1: bounds/);
   assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+});
+
+test('local validation identifies invalid confidence and missing fields without exposing model text or partially saving rooms',async t=>{
+  const f=await localFixture(t);
+  for(const [output,detail] of [
+    [{...plan,rooms:[...plan.rooms,{...plan.rooms[0],name:'PRIVATE-MODEL-TEXT',confidence:80}]},/Ruang 2: confidence mesti nombor 0–1/],
+    [{rooms:plan.rooms},/Medan notes mesti teks/],
+    [{...plan,rooms:[{...plan.rooms[0],bounds:{x:100,y:0,width:0,height:20}}]},/Ruang 1: bounds/],
+  ]) {
+    f.state.output=output;
+    const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
+    assert.equal(response.status,502);assert.match(response.data.error,detail);assert.ok(!response.data.error.includes('PRIVATE-MODEL-TEXT'));
+    assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+  }
+  const manual=await f.request(`/projects/${f.p.id}/rooms`,'POST',{rooms:[{name:'Manual',bounds:{x:0,y:0,width:20,height:20}}]});
+  assert.equal(manual.status,201);
+  f.state.output={...damage,confidence:80};
+  const response=await f.request(`/projects/${f.p.id}/analyze/damage`,'POST',{photoId:f.photo.id,roomId:manual.data.rooms[0].id});
+  assert.equal(response.status,502);assert.match(response.data.error,/confidence mesti nombor 0–1/);
+  assert.equal((await f.request('/projects')).data[0].inspections.length,0);
+});
+
+test('local malformed JSON and incomplete responses have distinct safe errors',async()=>{
+  const image=await sharp({create:{width:10,height:10,channels:3,background:'#fff'}}).png().toBuffer();
+  for(const [output,message] of [
+    [{done:true,done_reason:'stop',message:{content:'PRIVATE-MODEL-TEXT'}},/bukan JSON yang sah/],
+    [{done:false,message:{content:JSON.stringify(plan)}},/belum lengkap/],
+    [null,/belum lengkap/],
+  ]) {
+    let calls=0;
+    await assert.rejects(analyzeOllama({kind:'plan',image,fetchImpl:async url=>{
+      if(url.endsWith('/api/show'))return new Response(JSON.stringify({capabilities:['vision']}));
+      calls++;return new Response(JSON.stringify(output));
+    }}),error=>error.status===502&&message.test(error.message)&&!error.message.includes('PRIVATE-MODEL-TEXT'));
+    assert.equal(calls,1);
+  }
 });
 
 test('local request timeout and truncated results produce actionable errors',async()=>{

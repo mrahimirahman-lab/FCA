@@ -1,9 +1,34 @@
 import sharp from 'sharp';
 import { aiRoomsSchema, aiDamageSchema } from './domain.js';
-import { analysisPrompt, roomOutput, damageOutput } from './ai-contract.js';
+import { analysisPrompt, localRoomOutput, localDamageOutput } from './ai-contract.js';
 
 export const DEFAULT_LOCAL_MODEL='qwen2.5vl:3b';
 export const DEFAULT_LOCAL_URL='http://127.0.0.1:11434';
+
+// Report only known field names and fixed explanations, never raw model output
+// or Zod messages that could contain private text from a plan or photo.
+function validationDetails(kind,issues) {
+  const messages=issues.map(({path})=>{
+    if(kind==='plan') {
+      if(path[0]==='notes')return 'Medan notes mesti teks, maksimum 4000 aksara.';
+      if(path[0]==='rooms' && Number.isInteger(path[1])) {
+        const label=`Ruang ${path[1]+1}`;
+        if(path[2]==='confidence')return `${label}: confidence mesti nombor 0–1, bukan 0–100.`;
+        if(path[2]==='name')return `${label}: nama mesti diisi, maksimum 120 aksara.`;
+        if(path[2]==='bounds')return `${label}: bounds mesti nombor peratus 0–100; width/height lebih daripada 0, x + width dan y + height tidak melebihi 100.`;
+        return `${label}: butiran ruang tidak lengkap atau tidak sah.`;
+      }
+      return 'Medan rooms mesti senarai maksimum 100 ruang dan notes mesti disertakan.';
+    }
+    const messages={damageType:'Jenis kerosakan mesti diisi, maksimum 150 aksara.',description:'Deskripsi mesti diisi, maksimum 4000 aksara.',remedial:'Cadangan pembaikan mesti diisi, maksimum 4000 aksara.',severity:'Tahap mesti Rendah, Sederhana, Tinggi atau Kritikal.',confidence:'confidence mesti nombor 0–1, bukan 0–100.',limitations:'Medan limitations mesti teks, maksimum 4000 aksara.'};
+    return messages[path[0]] || 'Butiran kerosakan tidak lengkap atau tidak sah.';
+  });
+  return [...new Set(messages)].slice(0,3).join(' ');
+}
+
+function invalidOutput(message) {
+  return Object.assign(new Error(`${message} Tiada hasil disimpan. Cuba analisis semula; jika berulang, tandakan ruang atau isi dapatan secara manual.`),{status:502});
+}
 export function localConfiguration({model=DEFAULT_LOCAL_MODEL,baseUrl=DEFAULT_LOCAL_URL,timeoutSeconds=600}={}) {
   let url;
   try {url=new URL(baseUrl);} catch {return {error:'Alamat Ollama tidak sah. Gunakan pelayan Ollama pada komputer ini.'};}
@@ -34,7 +59,7 @@ export async function analyzeOllama({kind,image,roomName='',model=DEFAULT_LOCAL_
   if (!state.ready) throw Object.assign(new Error(state.message),{status:503});
   // Preserve the image's aspect ratio and percentage coordinates while reducing vision memory use.
   const png=await sharp(image).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toBuffer();
-  const schema=kind==='plan'?roomOutput:damageOutput;
+  const schema=kind==='plan'?localRoomOutput:localDamageOutput;
   let response,result;
   try {
     response=await fetchImpl(`${config.baseUrl}/api/chat`,{
@@ -55,9 +80,12 @@ export async function analyzeOllama({kind,image,roomName='',model=DEFAULT_LOCAL_
       : 'Ollama gagal memproses imej. Semak ruang RAM/VRAM, model vision dan aplikasi Ollama; cuba model yang lebih kecil jika perlu.';
     throw Object.assign(new Error(message),{status:502});
   }
-  if (result.done_reason==='length') throw Object.assign(new Error('Hasil AI tempatan melebihi had jawapan. Cuba satu aras atau kawasan pelan yang lebih kecil. Tiada ruang disimpan.'),{status:502});
-  try {
-    if (result.done!==true || (result.done_reason && result.done_reason!=='stop') || typeof result.message?.content!=='string') throw new Error();
-    return (kind==='plan'?aiRoomsSchema:aiDamageSchema).parse(JSON.parse(result.message.content));
-  } catch {throw Object.assign(new Error('Jawapan AI tempatan tidak lengkap atau sempadan ruang tidak sah. Tiada hasil disimpan; cuba imej yang lebih jelas atau isi secara manual.'),{status:502});}
+  if (result?.done_reason==='length') throw Object.assign(new Error('Hasil AI tempatan melebihi had jawapan. Cuba satu aras atau kawasan pelan yang lebih kecil. Tiada hasil disimpan.'),{status:502});
+  if (result?.done!==true || (result.done_reason && result.done_reason!=='stop') || typeof result.message?.content!=='string') throw invalidOutput('Jawapan AI tempatan belum lengkap.');
+  let output;
+  try {output=JSON.parse(result.message.content);}
+  catch {throw invalidOutput('Jawapan AI tempatan bukan JSON yang sah.');}
+  const parsed=(kind==='plan'?aiRoomsSchema:aiDamageSchema).safeParse(output);
+  if(!parsed.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails(kind,parsed.error.issues)}`);
+  return parsed.data;
 }

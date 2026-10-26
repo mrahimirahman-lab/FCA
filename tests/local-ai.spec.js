@@ -19,11 +19,20 @@ test('local AI readiness can refresh and both plan and photo actions work withou
   await expect(page.locator('.ai-sidebar')).toContainText('AI tempatan tersedia');
   await expect(page.getByRole('button',{name:'Analisis pelan',exact:true})).toBeEnabled();
   const candidate={rooms:[{name:'Ruang tempatan',bounds:{x:10,y:10,width:30,height:30},confidence:.6}],notes:'Respons ujian terkawal, bukan inferens model sebenar.'};
-  let release;const gate=new Promise(resolve=>{release=resolve;});
-  await page.route(`**/api/projects/${p.id}/analyze/plan`,async route=>{await gate;return route.fulfill({contentType:'application/json',body:JSON.stringify(candidate)});});
+  let release,planAttempts=0;const gate=new Promise(resolve=>{release=resolve;});
+  await page.route(`**/api/projects/${p.id}/analyze/plan`,async route=>{
+    planAttempts++;await gate;
+    return planAttempts===1?route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Jawapan AI tempatan tidak sah. Ruang 2: confidence mesti nombor 0–1, bukan 0–100. Tiada hasil disimpan.'})}):route.fulfill({contentType:'application/json',body:JSON.stringify(candidate)});
+  });
   await page.getByRole('button',{name:'Analisis pelan',exact:true}).click();
   await expect(page.locator('.analysis-loading')).toContainText('Model tempatan sedang memproses imej');release();
+  const result=page.getByRole('region',{name:'Keputusan analisis pelan'});
+  await expect(result.getByRole('alert')).toContainText('Ruang 2: confidence mesti nombor 0–1');
+  expect((await(await request.get('/api/projects')).json()).find(project=>project.id===p.id).rooms).toHaveLength(0);
+  expect(planAttempts).toBe(1);
+  await result.getByRole('button',{name:'Cuba analisis semula'}).click();
   await page.getByRole('button',{name:'Import untuk semakan'}).click();
+  expect(planAttempts).toBe(2);
   await expect(page.locator('.room-list')).toContainText('Ruang tempatan');
   const saved=(await(await request.get('/api/projects')).json()).find(project=>project.id===p.id);const room=saved.rooms[0];
   await page.getByRole('button',{name:'Pemeriksaan',exact:true}).click();
