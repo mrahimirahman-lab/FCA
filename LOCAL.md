@@ -70,12 +70,22 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 ### Laras kotak ruang dan daftar material
 
 1. Dalam **Pelan & daftar aset**, klik **Tambah ruang** dan klik lokasi pada pelan.
-2. Pilih kotak atau nama ruang. Seret pemegang di penjuru/tepi untuk membesar atau mengecilkan kotak; seret bahagian dalam kotak untuk mengalihkannya. Pada telefon, gunakan sentuhan yang sama. Nilai Kiri/Atas/Lebar/Tinggi (%) berubah bersama seretan dan juga boleh diisi terus.
+2. Pilih kotak atau nama ruang. Seret pemegang di penjuru/tepi untuk membesar atau mengecilkan kotak; seret bahagian dalam kotak untuk mengalihkannya. Pada telefon, gunakan sentuhan yang sama. Dalam **Ukuran ruang**, masukkan panjang/lebar dalam meter, atau gunakan skala pelan seperti panduan di bawah. Koordinat peratus masih boleh dilihat melalui **Kedudukan kotak (lanjutan)**.
 3. Dalam **Butiran ruang**, isi **Material dinding**, **Material lantai** dan **Material siling**. Pilih cadangan atau taip material/kemasan lain, contohnya `Bata berlepa + cat`.
 4. Klik **Simpan**. Tunggu mesej **Maklumat ruang disimpan**. Pelarasan dan material kekal selepas muat semula; kod ruang/aset kekal sama apabila hanya saiz/material diubah.
 5. Maklumat material semasa turut dipaparkan apabila memilih ruang untuk pemeriksaan, dalam laporan cetak/PDF dan eksport CSV. Medan kosong dilabel **Belum direkodkan** dalam paparan; nilai kosong dalam CSV.
 
-Untuk papan kekunci, fokus pada kotak atau pemegang dan tekan anak panah untuk langkah 1%; tahan Shift untuk langkah 0.1%. Peratus menunjukkan lokasi/saiz relatif pada gambar, bukan keluasan sebenar. Maklumat bahan ialah catatan pemeriksa dan boleh dilengkapkan kemudian bagi ruang lama.
+Untuk papan kekunci, fokus pada kotak atau pemegang dan tekan anak panah untuk langkah 1%; tahan Shift untuk langkah 0.1%. Peratus menunjukkan lokasi/saiz relatif pada gambar; meter dan m² memerlukan ukuran manual atau skala rujukan. Maklumat bahan ialah catatan pemeriksa dan boleh dilengkapkan kemudian bagi ruang lama.
+
+### Zoom, panjang/lebar dan keluasan m²
+
+- Gunakan **Zoom masuk/keluar** untuk membesarkan atau mengecilkan drawing, antara 25% hingga 400%. Pada zoom besar, skrol di dalam kawasan pelan untuk melihat bahagian lain. Hidupkan **Alih pandangan** jika mahu menyeret paparan tanpa mengalih kotak ruang; matikan semula untuk melaras kotak. **Muat lebar** kembali ke 100%. Zoom tidak mengubah kod aset, saiz ruang atau skala sebenar.
+- **Ukuran manual:** dalam Butiran ruang, isi **Panjang (m)** dan **Lebar (m)**. Contoh 3.3 m × 2.9 m menghasilkan 9.57 m². Klik **Simpan**. Ukuran manual kekal apabila kotak dilaras atau AI mencadangkan sempadan baharu.
+- **Ukuran daripada pelan:** tekan **Tetapkan skala**. Klik dua hujung garisan yang jarak sebenarnya diketahui, contohnya dimensi 3300 pada drawing. Isi **3300**, pilih unit **mm**, kemudian tekan **Simpan skala**. Titik rujukan mestilah sekurang-kurangnya 5 piksel berjauhan pada imej asal; zoom boleh membantu memilihnya dengan lebih teliti.
+- Selepas skala disimpan, ruang tanpa dimensi manual akan memaparkan anggaran panjang, lebar dan m² daripada kotak. Anggaran berubah bersama pelarasan kotak. Panjang automatik ialah sisi terpanjang; lebar sisi terpendek. **Guna ukuran pelan** kembali kepada kiraan ini jika anda pernah mengisi dimensi manual.
+- Skala boleh ditetapkan semula atau dipadam melalui panel yang sama. Dimensi manual disimpan pada ruang; skala disimpan pada pelan. Putaran mengekalkan ukuran; mengganti pelan membuang skala imej sebelumnya. Rekod lama kekal boleh digunakan dan menunjukkan ukuran belum tersedia sehingga anda menetapkannya.
+
+Keluasan ialah panjang × lebar bagi segi empat. Bentuk L/tidak sekata atau foto berherotan perspektif memerlukan semakan dan ukuran lanjut. Jangan gunakan tulisan `1:100` sahaja untuk menentukan skala imej digital yang mungkin telah dikecilkan. Paparan pemeriksaan, laporan dan CSV menunjukkan ukuran **semasa**, termasuk sumber manual atau anggaran skala pelan.
 
 ### Semak semula sempadan ruang dengan AI
 

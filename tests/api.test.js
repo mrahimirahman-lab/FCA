@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { createApp } from '../server/app.js';
 import { analyzeImage } from '../server/ai.js';
 import { cleanCadSvg } from '../server/cad.js';
+import {roomMeasurements} from '../server/measurements.js';
 
 async function fixture(t, options = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(),'fca-test-'));
@@ -52,6 +53,32 @@ test('legacy rooms without materials remain editable and accept partial material
   const result=await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...legacy,bounds:{x:1,y:2,width:30,height:40},materials:{ceiling:'Konkrit terdedah'}});
   assert.equal(result.status,200);assert.deepEqual(result.data.rooms[0].materials,{wall:'',floor:'',ceiling:'Konkrit terdedah'});
   assert.equal(result.data.rooms[0].code,room.code);
+});
+
+test('plan calibration and manual dimensions persist, validate, survive rotation and reset on replacement',async t=>{
+  const f=await fixture(t);let p=await f.project();const image=await f.upload();await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  p=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Pejabat',bounds:{x:10,y:20,width:30,height:25}}]})).data;
+  const original=p,calibration={start:{x:10,y:10},end:{x:60,y:10},distanceM:5};
+  const scale=await f.request(`/projects/${p.id}/plan/scale`,'PUT',{planId:p.plan.id,calibration});assert.equal(scale.status,200);p=scale.data;
+  assert.equal(p.plan.scale.metersPerPixel,.1);assert.deepEqual(p.rooms,original.rooms);assert.equal(roomMeasurements(p.rooms[0],p.plan).areaM2,6);
+  for(const bad of [{...calibration,distanceM:0},{...calibration,distanceM:-5},{...calibration,end:calibration.start},{...calibration,start:{x:101,y:10}}]) {
+    assert.equal((await f.request(`/projects/${p.id}/plan/scale`,'PUT',{planId:p.plan.id,calibration:bad})).status,400);assert.deepEqual((await f.request('/projects')).data[0],p);
+  }
+  const rotated=await f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle:90,planId:p.plan.id});assert.equal(rotated.status,200);p=rotated.data;
+  assert.equal(roomMeasurements(p.rooms[0],p.plan).areaM2,6);
+  assert.equal((await f.request(`/projects/${p.id}/plan/scale`,'PUT',{planId:image.id,calibration})).status,409);
+  const room=p.rooms[0];
+  p=(await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...room,dimensions:{lengthM:4,widthM:3,areaM2:9999}})).data;
+  assert.deepEqual(p.rooms[0].dimensions,{lengthM:4,widthM:3});assert.equal(roomMeasurements(p.rooms[0],p.plan).areaM2,12);assert.equal(p.rooms[0].code,room.code);
+  assert.equal((await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...p.rooms[0],dimensions:{lengthM:4,widthM:0}})).status,400);
+  const {dimensions,...legacyClient}=p.rooms[0];p=(await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',legacyClient)).data;assert.deepEqual(p.rooms[0].dimensions,dimensions);
+  await f.restart();assert.deepEqual((await f.request('/projects')).data[0],p);
+  p=(await f.request(`/projects/${p.id}/plan/scale`,'PUT',{planId:p.plan.id,calibration:null})).data;assert.equal(p.plan.scale,null);assert.equal(roomMeasurements(p.rooms[0],p.plan).areaM2,12);
+  p=(await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...p.rooms[0],dimensions:null})).data;assert.equal(roomMeasurements(p.rooms[0],p.plan),null);
+  // A different plan must not silently reuse the previous image's scale.
+  const second=(await f.request('/projects','POST',{name:'Aras lain',building:'D',floor:'02'})).data;
+  await f.request(`/projects/${second.id}/plan`,'PUT',{photoId:image.id});await f.request(`/projects/${second.id}/plan/scale`,'PUT',{planId:image.id,calibration});
+  const replacement=await f.upload();const changed=await f.request(`/projects/${second.id}/plan`,'PUT',{photoId:replacement.id});assert.equal(changed.status,200);assert.equal(changed.data.plan.scale,undefined);
 });
 
 test('focused room AI results for a concurrently edited room are rejected without overwriting the manual edit',async t=>{

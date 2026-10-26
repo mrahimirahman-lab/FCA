@@ -6,10 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
-import { projectSchema, roomSchema, roomUpdateSchema, boundsSchema, aiRoomsSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
+import { projectSchema, roomSchema, roomUpdateSchema, boundsSchema, aiRoomsSchema, planCalibrationSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
 import { analyzeConfiguredImage, providerSettings, providerHealth } from './ai-provider.js';
 import { convertDwg } from './cad.js';
 import { rotateRoomBounds } from './plan.js';
+import {makePlanScale,rotatePlanScale} from './measurements.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5 } });
 const cadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 0 } });
@@ -91,7 +92,18 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
   app.put('/api/projects/:id/plan', (req,res) => {
     const p = project(req); const image = photo(req.body.photoId);
     if (p.rooms.length) throw Object.assign(new Error('Projek sudah mempunyai ruang. Cipta projek aras baharu untuk pelan lain supaya pautan aset kekal tepat.'), { status: 409 });
-    p.plan = image; persist(); res.json(p);
+    const {scale:unusedScale,...freshPlan}=image;
+    p.plan = freshPlan; persist(); res.json(p);
+  });
+  app.put('/api/projects/:id/plan/scale',(req,res)=>{
+    const p=project(req);
+    const input=z.object({planId:idSchema,calibration:planCalibrationSchema.nullable()}).parse(req.body);
+    if(!p.plan)throw Object.assign(new Error('Muat naik pelan dahulu.'),{status:409});
+    checkPlanVersion(p,input.planId);
+    const scale=input.calibration===null?null:makePlanScale(p.plan,input.calibration);
+    const previous=p.plan;p.plan={...p.plan,scale};
+    try {persist();}catch(error){p.plan=previous;throw error;}
+    res.json(p);
   });
   app.post('/api/projects/:id/plan/rotate',async(req,res)=>{
     const p=project(req);
@@ -106,6 +118,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     const nextRooms=p.rooms.map(room=>({...room,bounds:rotateRoomBounds(room.bounds,angle)}));
     const id=randomUUID();
     const next={...previous,id,url:`/uploads/${id}.png`,width:info.width,height:info.height,rotation:((previous.rotation||0)+angle+360)%360};
+    if(previous.scale)next.scale=rotatePlanScale(previous.scale,angle);
     const file=path.join(dataDir,'uploads',`${id}.png`);
     fs.writeFileSync(file,png);
     const previousRooms=p.rooms;
