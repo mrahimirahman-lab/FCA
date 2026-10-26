@@ -72,10 +72,22 @@ Jika pelan sudah mempunyai ruang berdaftar, butang analisis semula pelan disekat
 - **Model tidak menyokong imej:** gunakan model vision yang betul dan kemas kini Ollama. Model teks sahaja tidak dapat membaca pelan atau foto.
 - **Lambat:** semasa analisis berjalan, buka Command Prompt lain dan jalankan `ollama ps`. Lajur PROCESSOR menunjukkan penggunaan GPU/CPU. Bagi masalah GPU, rujuk panduan Ollama dan driver NVIDIA untuk komputer anda. Tutup aplikasi lain yang menggunakan banyak RAM/VRAM.
 - **Tamat masa:** had lalai 600 saat boleh diubah melalui `OLLAMA_TIMEOUT_SECONDS`, antara 30 hingga 1800, kemudian mulakan semula FCA. Cuba satu aras/kawasan pelan yang lebih kecil. Jangan jalankan beberapa inferens berat serentak.
+- **Hasil melebihi had jawapan:** Ollama melaporkan generasi terpotong (`done_reason: length`). Ini berbeza daripada tamat masa dan tidak membuktikan imej kurang jelas. Versi terkini menggunakan had 8192 token jawapan dan konteks 16384 token untuk pelan, koordinat piksel nombor bulat, skor confidence dengan satu tempat perpuluhan dan nota maksimum 600 aksara. Ini menambah ruang jawapan sambil mengurangkan output yang tidak perlu; ia tidak menjamin model akan menamatkan semua pelan. Konteks lebih besar boleh menggunakan lebih memori dan mengambil lebih masa. Jika berulang, gunakan pelan satu aras yang lebih ringkas atau daftar ruang secara manual. Output yang ditanda terpotong tidak diterima walaupun sebahagian JSON kelihatan lengkap.
 - **Jawapan/koordinat tidak sah:** Ollama sudah dapat dihubungi, tetapi output gagal semakan format/nilai. Versi terkini meminta `bbox` dalam bentuk `[kiri, atas, kanan, bawah]` dalam piksel imej yang dihantar; aplikasi mengira lebar/tinggi dan peratus untuk paparan. Model tidak perlu mengira peratus atau menjumlahkan kedudukan dengan saiz ruang. Saiz imej selepas pengecilan dihantar dalam arahan. Unit tidak diteka daripada nilai, penjuru tidak disusun semula dan sempadan di luar imej tidak dipotong untuk meluluskan jawapan. Ralat menyatakan medan bermasalah, contohnya `Ruang 2: confidence mesti nombor 0–1` atau `Ruang 1: bbox ...`. Tiada ruang diimport jika mana-mana cadangan gagal semakan. Cuba sekali lagi melalui **Cuba analisis semula**. Jika berulang, catat mesej penuh yang baharu; anda boleh menggunakan **Tambah ruang** secara manual. Tiada percubaan inferens kedua secara automatik dan tiada respons AI palsu digunakan untuk menggantikan kegagalan.
 - **Masih tertera OpenAI:** pastikan anda memulakan FCA daripada folder yang telah dikemas kini, menjalankan `npm run ai:local`, dan memulakan semula FCA. Pembolehubah persekitaran Windows yang telah ditetapkan secara global boleh mengatasi `.env`.
 
 Untuk kembali ke OpenAI, tetapkan `INSPECTION_AI_PROVIDER=openai` dan sediakan kunci/kredit API yang sah; mulakan semula FCA.
+
+## Kemas kini pembaikan had jawapan sahaja
+
+Jika FCA anda sudah mempunyai sokongan Ollama dan ralat di atas, pembaikan ini hanya memerlukan dua fail pelayan; tiada dependency baharu atau perubahan frontend:
+
+1. Hentikan FCA dengan **Ctrl+C** dan simpan sandaran `data` serta `.env` seperti biasa.
+2. Muat turun ZIP terkini melalui **Code → Download ZIP** dan ekstrak ke folder berasingan.
+3. Dalam folder `server` daripada ZIP baharu, salin **`ai-contract.js`** dan **`ollama.js`**.
+4. Tampal kedua-duanya ke folder `server` dalam salinan FCA yang anda jalankan, dan pilih **Replace the files in the destination**. Kedua-dua fail perlu diganti bersama.
+5. Buka Command Prompt di folder aplikasi yang mengandungi `package.json` dan jalankan `npm start`. Pastikan proses lama sudah dihentikan dan Ollama masih berjalan.
+6. Muat semula pelayar dan cuba sekali lagi. Kemas kini ini tidak memerlukan `npm ci` atau `npm run build` kerana hanya kod pelayan berubah.
 
 ## Bukti pengesahan dan batasannya
 

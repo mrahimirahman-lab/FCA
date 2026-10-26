@@ -18,7 +18,7 @@ const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolv
 const stop=server=>new Promise(resolve=>server.close(resolve));
 
 async function localFixture(t) {
-  const calls=[],state={capabilities:['completion','vision'],missing:false,remote:false,bad:false,output:undefined};
+  const calls=[],state={capabilities:['completion','vision'],missing:false,remote:false,bad:false,truncated:false,output:undefined};
   const ollama=http.createServer(async(req,res)=>{
     try {
       const chunks=[];for await(const chunk of req)chunks.push(chunk);
@@ -30,7 +30,7 @@ async function localFixture(t) {
       }
       if(req.url==='/api/chat') {
         const result=state.output??(state.bad?{rooms:[{name:'Bad',confidence:.5,bbox:[99,0,119,20]}],notes:''}:body.format.properties.rooms?pixelPlan:damage);
-        res.end(JSON.stringify({done:true,done_reason:'stop',message:{role:'assistant',content:JSON.stringify(result)}}));return;
+        res.end(JSON.stringify({done:true,done_reason:state.truncated?'length':'stop',message:{role:'assistant',content:JSON.stringify(result)}}));return;
       }
       res.statusCode=404;res.end('{}');
     } catch {res.statusCode=500;res.end('{}');}
@@ -70,6 +70,11 @@ test('local HTTP protocol supports plan and damage workflows without forwarding 
   }
   const bbox=chats[0].body.format.properties.rooms.items.properties.bbox;
   assert.equal(bbox.items.maximum,100);assert.equal(bbox.minItems,4);assert.equal(bbox.maxItems,4);
+  assert.equal(bbox.items.type,'integer');
+  assert.deepEqual(chats[0].body.format.properties.rooms.items.properties.confidence.enum,[0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]);
+  assert.equal(chats[0].body.format.properties.notes.maxLength,600);
+  assert.equal(chats[0].body.options.num_predict,8192);assert.ok(chats[0].body.options.num_ctx>=chats[0].body.options.num_predict+8192);
+  assert.equal(chats[1].body.options.num_ctx,8192);assert.equal(chats[1].body.options.num_predict,5000);
   assert.match(chats[0].body.messages[0].content,/100 piksel lebar dan 100 piksel tinggi/);
   assert.ok(f.calls.every(c=>c.authorization===undefined));assert.ok(!JSON.stringify(f.calls).includes('test-cloud-key-must-stay-unused'));
 });
@@ -124,7 +129,7 @@ test('local validation identifies invalid confidence and missing fields without 
 });
 
 test('local pixel corners use the exact resized PNG dimensions for wide, tall and small plans',async()=>{
-  for(const [width,height,bbox] of [[2400,1200,[160,80,640,400]],[1200,2400,[80,160,320,800]],[83,137,[8.3,13.7,33.2,68.5]]]) {
+  for(const [width,height,bbox] of [[2400,1200,[160,80,640,400]],[1200,2400,[80,160,320,800]],[80,140,[8,14,32,70]]]) {
     const image=await sharp({create:{width,height,channels:3,background:'#fff'}}).png().toBuffer();
     const result=await analyzeOllama({kind:'plan',image,fetchImpl:async(url,options)=>{
       if(url.endsWith('/api/show'))return new Response(JSON.stringify({capabilities:['vision']}));
@@ -144,7 +149,7 @@ test('local pixel corners use the exact resized PNG dimensions for wide, tall an
 
 test('local pixel corners reject out-of-image, reversed, degenerate, nonnumeric and legacy boxes without guessing units',async t=>{
   const f=await localFixture(t);
-  for(const bbox of [[-1,0,20,20],[10,10,101,20],[10,10,20,101],[20,10,10,30],[10,30,20,10],[10,10,10,20],[10,10,20,10],['10',10,20,20],[0,0,20],[0,0,20,20,40],null]) {
+  for(const bbox of [[-1,0,20,20],[10,10,101,20],[10,10,20,101],[20,10,10,30],[10,30,20,10],[10,10,10,20],[10,10,20,10],[.123456789,10,20,20],['10',10,20,20],[0,0,20],[0,0,20,20,40],null]) {
     f.state.output={...pixelPlan,rooms:[{...pixelPlan.rooms[0],bbox}]};
     const response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
     assert.equal(response.status,502);assert.match(response.data.error,/Ruang 1: bbox/);
@@ -152,6 +157,23 @@ test('local pixel corners reject out-of-image, reversed, degenerate, nonnumeric 
   }
   f.state.output=plan; // Old percentage bounds are not interpreted as pixel corners.
   assert.equal((await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{})).status,502);
+  assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+});
+
+test('local long plan responses require complete generation and bounded notes before any explicit import',async t=>{
+  const f=await localFixture(t);
+  f.state.output={rooms:Array.from({length:100},(_,i)=>({...pixelPlan.rooms[0],name:`Ruang ujian ${i+1} `.padEnd(120,'x')})),notes:'x'.repeat(600)};
+  let response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
+  assert.equal(response.status,200);assert.equal(response.data.rooms.length,100);
+  assert.deepEqual(response.data.rooms[99].bounds,plan.rooms[0].bounds);
+  assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+  f.state.truncated=true;
+  response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
+  assert.equal(response.status,502);assert.match(response.data.error,/melebihi had jawapan/);
+  assert.equal((await f.request('/projects')).data[0].rooms.length,0);
+  f.state.truncated=false;f.state.output.notes='x'.repeat(601);
+  response=await f.request(`/projects/${f.p.id}/analyze/plan`,'POST',{});
+  assert.equal(response.status,502);assert.match(response.data.error,/notes mesti teks, maksimum 600/);
   assert.equal((await f.request('/projects')).data[0].rooms.length,0);
 });
 

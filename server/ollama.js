@@ -11,7 +11,7 @@ export const DEFAULT_LOCAL_URL='http://127.0.0.1:11434';
 function validationDetails(kind,issues,imageSize) {
   const messages=issues.map(({path,params})=>{
     if(kind==='plan') {
-      if(path[0]==='notes')return 'Medan notes mesti teks, maksimum 4000 aksara.';
+      if(path[0]==='notes')return 'Medan notes mesti teks, maksimum 600 aksara.';
       if(path[0]==='rooms' && Number.isInteger(path[1])) {
         const label=`Ruang ${path[1]+1}`;
         if(path[2]==='confidence')return `${label}: confidence mesti nombor 0–1, bukan 0–100.`;
@@ -20,7 +20,7 @@ function validationDetails(kind,issues,imageSize) {
           const reasons={horizontal_order:'penjuru kanan tidak berada di sebelah kanan penjuru kiri',vertical_order:'penjuru bawah tidak berada di bawah penjuru atas',right_outside:'penjuru kanan melebihi lebar imej',bottom_outside:'penjuru bawah melebihi tinggi imej'};
           const reason=reasons[params?.geometry];
           return reason ? `${label}: bbox tidak sah kerana ${reason} (imej ${imageSize.width} × ${imageSize.height} piksel).`
-            : `${label}: bbox mesti empat nombor piksel [kiri, atas, kanan, bawah] dalam imej ${imageSize.width} × ${imageSize.height}; semua nombor mesti 0 atau lebih.`;
+            : `${label}: bbox mesti empat nombor bulat piksel [kiri, atas, kanan, bawah] dalam imej ${imageSize.width} × ${imageSize.height}; semua nombor mesti 0 atau lebih.`;
         }
         if(path[2]==='bounds')return `${label}: bounds mesti nombor peratus 0–100; width/height lebih daripada 0, x + width dan y + height tidak melebihi 100.`;
         return `${label}: butiran ruang tidak lengkap atau tidak sah.`;
@@ -36,14 +36,14 @@ function validationDetails(kind,issues,imageSize) {
 function parseLocalPlan(output,{width,height}) {
   // Validate the explicitly requested coordinate system. Never infer units from
   // value magnitude, reorder corners or clamp boxes to make output pass.
-  const bbox=z.array(z.number().min(0)).length(4).superRefine((box,ctx)=>{
+  const bbox=z.array(z.number().int().min(0)).length(4).superRefine((box,ctx)=>{
     if(box.length!==4)return;
     const [left,top,right,bottom]=box;
     for(const [invalid,geometry] of [[left>=right,'horizontal_order'],[top>=bottom,'vertical_order'],[right>width,'right_outside'],[bottom>height,'bottom_outside']]) {
       if(invalid)ctx.addIssue({code:'custom',message:'Penjuru ruang tidak sah.',params:{geometry}});
     }
   });
-  const candidate=aiRoomsSchema.extend({rooms:z.array(aiRoomsSchema.shape.rooms.element.omit({bounds:true}).extend({bbox})).max(100)}).safeParse(output);
+  const candidate=aiRoomsSchema.extend({rooms:z.array(aiRoomsSchema.shape.rooms.element.omit({bounds:true}).extend({bbox})).max(100),notes:z.string().max(600)}).safeParse(output);
   if(!candidate.success)throw invalidOutput(`Jawapan AI tempatan tidak sah. ${validationDetails('plan',candidate.error.issues,{width,height})}`);
   const converted={...candidate.data,rooms:candidate.data.rooms.map(({bbox:[left,top,right,bottom],...room})=>({
     ...room,bounds:{x:left/width*100,y:top/height*100,width:(right-left)/width*100,height:(bottom-top)/height*100},
@@ -95,7 +95,9 @@ export async function analyzeOllama({kind,image,roomName='',model=DEFAULT_LOCAL_
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:config.model,stream:false,format:schema,keep_alive:'5m',
         messages:[{role:'user',content:`${prompt}\nPulangkan satu objek JSON sahaja mengikut skema ini: ${JSON.stringify(schema)}`,images:[png.toString('base64')]}],
-        options:{temperature:0,num_ctx:8192,num_predict:5000}}),
+        // Leave room for the image/prompt as well as a complete plan response.
+        // Damage requests retain the smaller context to limit memory use.
+        options:{temperature:0,num_ctx:kind==='plan'?16384:8192,num_predict:kind==='plan'?8192:5000}}),
     });
     result=await response.json();
   } catch(error) {
@@ -108,7 +110,7 @@ export async function analyzeOllama({kind,image,roomName='',model=DEFAULT_LOCAL_
       : 'Ollama gagal memproses imej. Semak ruang RAM/VRAM, model vision dan aplikasi Ollama; cuba model yang lebih kecil jika perlu.';
     throw Object.assign(new Error(message),{status:502});
   }
-  if (result?.done_reason==='length') throw Object.assign(new Error('Hasil AI tempatan melebihi had jawapan. Cuba satu aras atau kawasan pelan yang lebih kecil. Tiada hasil disimpan.'),{status:502});
+  if (result?.done_reason==='length') throw Object.assign(new Error('Hasil AI tempatan melebihi had jawapan. Model belum menamatkan JSON analisis. Cuba pelan satu aras yang lebih ringkas atau daftar ruang secara manual. Tiada hasil disimpan.'),{status:502});
   if (result?.done!==true || (result.done_reason && result.done_reason!=='stop') || typeof result.message?.content!=='string') throw invalidOutput('Jawapan AI tempatan belum lengkap.');
   let output;
   try {output=JSON.parse(result.message.content);}
