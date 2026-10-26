@@ -9,6 +9,7 @@ import { z, ZodError } from 'zod';
 import { projectSchema, roomSchema, roomNumberSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
 import { analyzeConfiguredImage, providerSettings, providerHealth } from './ai-provider.js';
 import { convertDwg } from './cad.js';
+import { rotateRoomBounds } from './plan.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5 } });
 const cadUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 0 } });
@@ -39,6 +40,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
   app.use('/uploads', express.static(path.join(dataDir, 'uploads'), { fallthrough: false, dotfiles: 'deny' }));
   const project = req => { const p = db.projects.find(p => p.id === req.params.id); if (!p) throw Object.assign(new Error('Projek tidak ditemui.'), { status: 404 }); return p; };
   const photo = id => { idSchema.parse(id); const item = db.uploads.find(u => u.id === id); if (!item) throw Object.assign(new Error('Imej tidak ditemui.'), { status: 404 }); return item; };
+  const checkPlanVersion=(p,planId)=>{if(planId!==undefined && p.plan?.id!==planId)throw Object.assign(new Error('Pelan telah berubah. Muat semula halaman sebelum meneruskan supaya kedudukan ruang tepat.'),{status:409});};
   app.get('/api/health', async (_req,res) => res.json({ ok:true,...await providerHealth(aiSettings) }));
   app.get('/api/projects', (_req,res) => res.json(db.projects));
   app.post('/api/projects', (req,res) => {
@@ -91,9 +93,31 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     if (p.rooms.length) throw Object.assign(new Error('Projek sudah mempunyai ruang. Cipta projek aras baharu untuk pelan lain supaya pautan aset kekal tepat.'), { status: 409 });
     p.plan = image; persist(); res.json(p);
   });
+  app.post('/api/projects/:id/plan/rotate',async(req,res)=>{
+    const p=project(req);
+    const {angle,planId}=z.object({angle:z.union([z.literal(-90),z.literal(90),z.literal(180)]),planId:idSchema}).parse(req.body);
+    if(!p.plan)throw Object.assign(new Error('Muat naik pelan dahulu.'),{status:409});
+    checkPlanVersion(p,planId);
+    const previous=p.plan;
+    const {data:png,info}=await sharp(path.join(dataDir,'uploads',`${previous.id}.png`)).rotate(angle).png().toBuffer({resolveWithObject:true});
+    // Recheck after image processing: another request may have replaced/rotated
+    // the plan. Use current rooms so edits made during processing are retained.
+    checkPlanVersion(p,planId);
+    const nextRooms=p.rooms.map(room=>({...room,bounds:rotateRoomBounds(room.bounds,angle)}));
+    const id=randomUUID();
+    const next={...previous,id,url:`/uploads/${id}.png`,width:info.width,height:info.height,rotation:((previous.rotation||0)+angle+360)%360};
+    const file=path.join(dataDir,'uploads',`${id}.png`);
+    fs.writeFileSync(file,png);
+    const previousRooms=p.rooms;
+    db.uploads.push(next);p.plan=next;p.rooms=nextRooms;
+    try {persist();}
+    catch(error){p.plan=previous;p.rooms=previousRooms;db.uploads.pop();fs.rmSync(file,{force:true});throw error;}
+    res.json(p);
+  });
   app.post('/api/projects/:id/rooms', (req,res) => {
     const p = project(req);
     if (!p.plan) throw Object.assign(new Error('Muat naik pelan dahulu.'), { status: 409 });
+    checkPlanVersion(p,req.body.planId);
     const inputs = z.array(roomSchema).min(1).max(100).parse(req.body.rooms);
     const reserved = new Set(p.rooms.map(r => r.number));
     for (const input of inputs.filter(r => r.number)) { if (reserved.has(input.number)) throw Object.assign(new Error('Kod ruang sudah digunakan pada aras ini.'), { status: 409 }); reserved.add(input.number); }
@@ -109,6 +133,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
   app.patch('/api/projects/:id/rooms/:roomId', (req,res) => {
     const p = project(req); const room = p.rooms.find(r => r.id === req.params.roomId);
     if (!room) throw Object.assign(new Error('Ruang tidak ditemui.'), { status: 404 });
+    checkPlanVersion(p,req.body.planId);
     const update = roomSchema.pick({ name: true, bounds: true }).extend({ number: roomNumberSchema, reviewed: z.boolean() }).parse(req.body);
     if (p.rooms.some(r => r.id !== room.id && r.number === update.number)) throw Object.assign(new Error('Kod ruang sudah digunakan pada aras ini.'), { status: 409 });
     if (room.number !== update.number && p.inspections.some(i => i.roomId === room.id)) throw Object.assign(new Error('Kod ruang yang mempunyai pemeriksaan dikunci untuk mengekalkan rujukan rekod.'), { status: 409 });
@@ -142,7 +167,7 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     const room = p.rooms.find(r => r.id === req.body.roomId);
     if (kind === 'damage' && !room) throw Object.assign(new Error('Pilih ruang pemeriksaan.'), { status: 400 });
     aiBusy = true;
-    try { const image = fs.readFileSync(path.join(dataDir,'uploads',`${item.id}.png`)); res.json(await analyze({ kind, image, key: aiKey, model: aiSettings.model, settings:aiSettings, roomName: room?.name })); }
+    try { const image = fs.readFileSync(path.join(dataDir,'uploads',`${item.id}.png`)); const result=await analyze({ kind, image, key: aiKey, model: aiSettings.model, settings:aiSettings, roomName: room?.name }); if(kind==='plan')checkPlanVersion(p,item.id); res.json(result); }
     finally { aiBusy = false; }
   });
   app.use('/api', (_req,res) => res.status(404).json({ error: 'Laluan API tidak ditemui.' }));

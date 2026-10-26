@@ -67,6 +67,10 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 ## Rekod, gambar dan sandaran
 
+Untuk membetulkan orientasi drawing, buka **Pelan & daftar aset** selepas memuat naik pelan. Di atas gambar, gunakan **Kiri 90°**, **Kanan 90°** atau **Putar 180°**. Setiap klik menyimpan putaran; tunggu mesej **Orientasi disimpan** sebelum meneruskan. Analisis AI menggunakan orientasi yang disimpan. Kedudukan ruang sedia ada diselaraskan bersama putaran dan kod aset kekal sama. Bagi PDF, kawalan ini memutar halaman yang sedang digunakan; memilih halaman PDF lain memulakan orientasi halaman baharu. Butang **Fail asal** untuk DWG masih memuat turun fail sumber asal.
+
+Fungsi orientasi melibatkan kod pelayan dan paparan web. Apabila menaik taraf daripada versi lama, gunakan langkah **Mengemas kini daripada ZIP GitHub tanpa kehilangan data** di atas, termasuk `npm run build` sebelum `npm start`.
+
 - Rekod: `data/database.json`.
 - Gambar dan imej halaman pelan: `data/uploads/`.
 - DWG asal jika diimport: `data/cad/`.

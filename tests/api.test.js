@@ -43,6 +43,9 @@ test('actual AutoCAD 2000 and 2018 DWG imports preserve source, geometry and pro
     const preview=await fetch(f.origin()+plan.url);assert.equal(preview.status,200);
     const png=Buffer.from(await preview.arrayBuffer());const pixels=await sharp(png).stats();
     assert.ok(pixels.channels[0].stdev>1,'Rendered drawing must contain visible geometry or text');
+    const rotated=await f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle:90,planId:plan.id});
+    assert.equal(rotated.status,200);assert.deepEqual(rotated.data.plan.cad,plan.cad);
+    assert.equal(rotated.data.plan.width,plan.height);assert.equal(rotated.data.plan.height,plan.width);
     const original=await fetch(f.origin()+`/api/projects/${p.id}/cad/source`);
     assert.deepEqual(Buffer.from(await original.arrayBuffer()),bytes);
   }
@@ -64,6 +67,60 @@ test('CAD rasterization strips active markup and external resource references',a
   assert.ok(!svg.includes('<script'));assert.ok(!svg.includes('<image'));assert.ok(!svg.includes('https://'));assert.ok(!svg.includes('onclick'));
   assert.ok(svg.includes('<line'));assert.ok(svg.includes('A &amp; B'));assert.ok(svg.includes('width="2400"'));
   assert.ok((await sharp(Buffer.from(svg)).png().toBuffer()).length>0,'Empty CAD attributes must remain valid SVG/XML');
+});
+
+test('saved rotations move actual pixels and room bounds while preserving assets, inspection photos and persistence',async t=>{
+  const f=await fixture(t);let p=await f.project();
+  const red=await sharp({create:{width:20,height:10,channels:3,background:'#ff0000'}}).png().toBuffer();
+  const png=await sharp({create:{width:100,height:80,channels:3,background:'#ffffff'}}).composite([{input:red,left:0,top:0}]).png().toBuffer();
+  const form=new FormData();form.append('image',new Blob([png],{type:'image/png'}),'plan.png');const image=(await f.request('/uploads','POST',form)).data;
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  p=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Pejabat',bounds:{x:10,y:20,width:30,height:40}}]})).data;
+  const room=p.rooms[0];
+  p=(await f.request(`/projects/${p.id}/inspections`,'POST',{roomId:room.id,photoId:image.id,damageType:'Retak',description:'Retak kelihatan.',remedial:'Periksa di tapak.',severity:'Rendah',reviewed:true,inspector:'Ali'})).data;
+  const inspection=structuredClone(p.inspections[0]);
+  for(const [angle,rotation,bounds] of [[90,90,{x:40,y:10,width:40,height:30}],[-90,0,room.bounds],[180,180,{x:60,y:40,width:30,height:40}],[180,0,room.bounds],[-90,270,{x:20,y:60,width:40,height:30}]]) {
+    const response=await f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle,planId:p.plan.id});assert.equal(response.status,200);p=response.data;
+    assert.equal(p.plan.rotation,rotation);assert.deepEqual(p.rooms[0],{...room,bounds});assert.deepEqual(p.inspections,[inspection]);
+    assert.equal(p.plan.width,rotation%180===0?100:80);assert.equal(p.plan.height,rotation%180===0?80:100);
+    if(rotation===90) {
+      const buffer=Buffer.from(await(await fetch(f.origin()+p.plan.url)).arrayBuffer());
+      const sample=async(left,top)=>[...await sharp(buffer).extract({left,top,width:1,height:1}).removeAlpha().raw().toBuffer()];
+      assert.deepEqual(await sample(75,5),[255,0,0]);assert.deepEqual(await sample(5,75),[255,255,255]);
+    }
+  }
+  assert.deepEqual(Buffer.from(await(await fetch(f.origin()+image.url)).arrayBuffer()),png,'Original image used by inspections stays unchanged');
+  await f.restart();assert.deepEqual((await f.request('/projects')).data[0],p);
+});
+
+test('rotation rejects invalid and stale requests and prevents stale room coordinates after a concurrent turn',async t=>{
+  const f=await fixture(t);const p=await f.project();const image=await f.upload();
+  assert.equal((await f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle:90,planId:image.id})).status,409);
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  for(const body of [{angle:45,planId:image.id},{angle:90},{angle:'90',planId:image.id}])assert.equal((await f.request(`/projects/${p.id}/plan/rotate`,'POST',body)).status,400);
+  const turns=await Promise.all([90,90].map(angle=>f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle,planId:image.id})));
+  assert.deepEqual(turns.map(r=>r.status).sort(),[200,409]);
+  let saved=(await f.request('/projects')).data[0];assert.equal(saved.plan.rotation,90);
+  const input={name:'Ruang',bounds:{x:10,y:20,width:30,height:40}};
+  assert.equal((await f.request(`/projects/${p.id}/rooms`,'POST',{planId:image.id,rooms:[input]})).status,409);
+  saved=(await f.request(`/projects/${p.id}/rooms`,'POST',{planId:saved.plan.id,rooms:[input]})).data;
+  const room=saved.rooms[0];
+  assert.equal((await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...room,planId:image.id})).status,409);
+  assert.deepEqual((await f.request('/projects')).data[0],saved);
+});
+
+test('AI receives the saved orientation and a result for an earlier orientation is rejected',async t=>{
+  let started,release,seen;const gate=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);
+  const f=await fixture(t,{analyze:async({image})=>{seen=await sharp(image).metadata();started();await gate;return {rooms:[],notes:'Controlled orientation test.'};}});
+  const p=await f.project();const image=await f.upload();await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  const pending=f.request(`/projects/${p.id}/analyze/plan`,'POST',{});
+  try {await ready;assert.equal(seen.width,100);assert.equal(seen.height,80);
+    assert.equal((await f.request(`/projects/${p.id}/plan/rotate`,'POST',{angle:90,planId:image.id})).status,200);
+  } finally {release();}
+  assert.equal((await pending).status,409);
+  assert.equal((await f.request(`/projects/${p.id}/analyze/plan`,'POST',{})).status,200);
+  assert.equal(seen.width,80);assert.equal(seen.height,100);
+  assert.equal((await f.request('/projects')).data[0].rooms.length,0);
 });
 
 test('floor plan → stable assets → reviewed inspection → persistence',async t => {

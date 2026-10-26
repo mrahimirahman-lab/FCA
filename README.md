@@ -42,6 +42,8 @@ API dan binaan web dilayan pada port 3001, terikat kepada `127.0.0.1`. Semak kes
 5. Masukkan nama pemeriksa dan sahkan rekod. Rekod boleh disimpan sebagai draf dan diedit kemudian melalui laporan.
 6. Tapis rekod, eksport CSV atau gunakan Cetak / PDF untuk laporan bergambar. Draf dilabel dengan jelas.
 
+Pada **Pelan & daftar aset → Orientasi pelan**, gunakan **Kiri 90°**, **Kanan 90°** atau **Putar 180°** untuk membetulkan pelan JPG/PNG, halaman PDF yang dipilih atau paparan DWG. Putaran disimpan pada imej pelan dan digunakan semasa analisis AI. Sempadan ruang sedia ada turut diputar; kod aset dan rekod pemeriksaan dikekalkan. Cadangan AI yang belum diimport dibersihkan selepas putaran berjaya supaya koordinat lama tidak digunakan. Fail DWG asal dan foto pemeriksaan dikekalkan. Kawalan ini menyokong putaran suku/pusingan separuh, bukan pelurusan sudut kecil untuk foto senget.
+
 ## Struktur kod DAK
 
 Berdasarkan screenshot pengguna “Jadual 7: Struktur DAK Blok Bangunan Bagi Bangunan”:
