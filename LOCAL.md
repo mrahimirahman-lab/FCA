@@ -77,6 +77,13 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 Untuk papan kekunci, fokus pada kotak atau pemegang dan tekan anak panah untuk langkah 1%; tahan Shift untuk langkah 0.1%. Peratus menunjukkan lokasi/saiz relatif pada gambar; meter dan m² memerlukan ukuran manual atau skala rujukan. Maklumat bahan ialah catatan pemeriksa dan boleh dilengkapkan kemudian bagi ruang lama.
 
+### Memilih dan memadam ruang
+
+- Dalam **Daftar ruang**, tanda kotak pilihan bagi ruang yang hendak dipadam, kemudian klik **Padam pilihan (bilangan)**. Anda boleh memilih beberapa ruang atau semua ruang tanpa pemeriksaan. Carian membantu mengecilkan senarai; **Pilih semua hasil carian** hanya menanda hasil tersebut, sementara pilihan terdahulu di luar carian kekal dipilih. **Kosongkan pilihan** membuang semua tanda.
+- Untuk satu ruang, klik kotaknya pada pelan atau barisnya dalam daftar, kemudian tekan kekunci **Delete**. Anda juga boleh klik **Padam ruang** dalam Butiran ruang. Kekunci Delete semasa menaip dalam medan borang hanya menyunting teks.
+- Semak nama dan kod dalam tetingkap pengesahan sebelum menekan **Ya, padam … ruang**. **Batal** atau Escape mengekalkan ruang dan draf. Pemadaman membuang maklumat ruang termasuk material dan dimensi; nombor aset tidak digunakan semula. Sandarkan folder `data` dahulu jika anda mahu salinan yang boleh dipulihkan.
+- Ruang dengan rekod pemeriksaan tidak boleh dipadam. Jika pilihan tidak lagi sah atau mengandungi ruang dilindungi, pelayan menolak seluruh permintaan tanpa memadam sebahagian pilihan. Pelan, gambar dan ruang lain dikekalkan.
+
 ### Zoom, panjang/lebar dan keluasan m²
 
 - Gunakan **Zoom masuk/keluar** untuk membesarkan atau mengecilkan drawing, antara 25% hingga 400%. Pada zoom besar, skrol di dalam kawasan pelan untuk melihat bahagian lain. Hidupkan **Alih pandangan** jika mahu menyeret paparan tanpa mengalih kotak ruang; matikan semula untuk melaras kotak. **Muat lebar** kembali ke 100%. Zoom tidak mengubah kod aset, saiz ruang atau skala sebenar.

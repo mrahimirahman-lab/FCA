@@ -20,6 +20,30 @@ async function fixture(t, options = {}) {
   return {request,upload,project,dataDir,origin:()=>`http://127.0.0.1:${server.address().port}`,restart:async () => {await new Promise(resolve => server.close(resolve));server=await start();}};
 }
 
+test('bulk room deletion is atomic, protects inspections and preserves sequence and other projects',async t=>{
+  const f=await fixture(t);let p=await f.project();const image=await f.upload();
+  await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  p=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:Array.from({length:4},(_,i)=>({name:`Ruang ${i+1}`,bounds:{x:i*20,y:10,width:10,height:20}}))})).data;
+  p=(await f.request(`/projects/${p.id}/inspections`,'POST',{roomId:p.rooms[0].id,photoId:image.id,damageType:'Retak',description:'Retak dinding.',remedial:'Periksa di tapak.',severity:'Rendah',reviewed:true,inspector:'Ali'})).data;
+  const other=(await f.request('/projects','POST',{name:'Projek lain',building:'Z',floor:'01'})).data;
+  const endpoint=`/projects/${p.id}/rooms`,ids=p.rooms.map(room=>room.id);
+  for(const [body,status] of [
+    [{roomIds:[]},400],[{roomIds:[ids[1],ids[1]]},400],[{roomIds:['bad-id']},400],
+    [{roomIds:[ids[1],other.id]},404],[{roomIds:[ids[1],ids[0]]},409],
+    [{roomIds:[ids[1]],planId:other.id},409]
+  ]) {
+    assert.equal((await f.request(endpoint,'DELETE',body)).status,status);
+    assert.deepEqual((await f.request('/projects')).data,[p,other]);
+  }
+  const result=await f.request(endpoint,'DELETE',{roomIds:[ids[1],ids[3]],planId:p.plan.id});
+  assert.equal(result.status,200);
+  assert.deepEqual(result.data,{...p,rooms:[p.rooms[0],p.rooms[2]]});
+  await f.restart();assert.deepEqual((await f.request('/projects')).data,[result.data,other]);
+  const next=await f.request(endpoint,'POST',{rooms:[{name:'Baharu',bounds:{x:0,y:0,width:10,height:10}}]});
+  assert.equal(next.data.rooms.at(-1).number,'0005');
+  assert.equal((await f.request(`${endpoint}/${ids[1]}`,'DELETE')).status,404);
+});
+
 test('room resizing and materials persist with stable asset codes and preserve materials for older clients',async t=>{
   const f=await fixture(t);let p=await f.project();const image=await f.upload();
   await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});

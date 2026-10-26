@@ -153,10 +153,23 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
     if (room.number !== update.number && p.inspections.some(i => i.roomId === room.id)) throw Object.assign(new Error('Kod ruang yang mempunyai pemeriksaan dikunci untuk mengekalkan rujukan rekod.'), { status: 409 });
     Object.assign(room, update, { code: assetCode(p,update.number) }); persist(); res.json(p);
   });
+  function deleteRooms(p,ids,res) {
+    const selected=new Set(ids);
+    if(ids.some(id=>!p.rooms.some(room=>room.id===id)))throw Object.assign(new Error('Ruang tidak ditemui. Muat semula daftar ruang sebelum memadam.'),{status:404});
+    if(p.inspections.some(i=>selected.has(i.roomId)))throw Object.assign(new Error('Pilihan mengandungi ruang yang mempunyai rekod pemeriksaan. Tiada ruang dipadam.'),{status:409});
+    const previous=p.rooms;
+    p.rooms=p.rooms.filter(room=>!selected.has(room.id));
+    try {persist();}catch(error){p.rooms=previous;throw error;}
+    res.json(p);
+  }
+  app.delete('/api/projects/:id/rooms', (req,res) => {
+    const p=project(req);
+    const {roomIds}=z.object({roomIds:z.array(idSchema).min(1).max(9999).refine(ids=>new Set(ids).size===ids.length,'Pilihan ruang berulang.')}).parse(req.body);
+    checkPlanVersion(p,req.body.planId);
+    deleteRooms(p,roomIds,res);
+  });
   app.delete('/api/projects/:id/rooms/:roomId', (req,res) => {
-    const p = project(req);
-    if (p.inspections.some(i => i.roomId === req.params.roomId)) throw Object.assign(new Error('Ruang mempunyai rekod pemeriksaan dan tidak boleh dipadam.'), { status: 409 });
-    p.rooms = p.rooms.filter(r => r.id !== req.params.roomId); persist(); res.json(p);
+    deleteRooms(project(req),[req.params.roomId],res);
   });
   app.post('/api/projects/:id/inspections', (req,res) => {
     const p = project(req); const input = inspectionSchema.parse(req.body); photo(input.photoId);
