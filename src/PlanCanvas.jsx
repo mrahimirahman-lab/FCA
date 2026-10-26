@@ -57,10 +57,11 @@ export default function PlanCanvas({plan,floor,rooms,roomId,roomDraft,addingRoom
     <img src={plan.url} alt={`Pelan lantai ${floor}`} draggable={false}/>
     {rooms.map(room=>{
       const selected=room.id===roomId;
+      const reviewed=selected && roomDraft?.id===room.id?roomDraft.reviewed:room.reviewed;
       const draft=selected && roomDraft?.id===room.id?boundsSchema.safeParse(roomDraft.bounds):null;
       const bounds=draft?.success?draft.data:room.bounds;
       return <div className={`room-box ${selected?'selected':''}`} key={room.id} style={{left:`${bounds.x}%`,top:`${bounds.y}%`,width:`${bounds.width}%`,height:`${bounds.height}%`}}>
-        <button type="button" disabled={disabled} className={`room-bound ${selected?'selected':''} ${!room.reviewed?'unreviewed':''}`} aria-label={`Pilih ${room.name}`} title={selected?'Seret untuk alih ruang. Kekunci anak panah juga boleh digunakan.':`Pilih ${room.name}`} {...events(room,'move',bounds)} onClick={event=>{if(addingRoom)return;event.stopPropagation();onSelectRoom(room.id);}}><span>{room.number}</span></button>
+        <button type="button" disabled={disabled} className={`room-bound ${selected?'selected':''} ${!reviewed?'unreviewed':''}`} aria-label={`Pilih ${room.name}`} title={selected?'Seret untuk alih ruang. Kekunci anak panah juga boleh digunakan.':`Pilih ${room.name}`} {...events(room,'move',bounds)} onClick={event=>{if(addingRoom)return;event.stopPropagation();onSelectRoom(room.id);}}><span>{room.number}</span></button>
         {selected && !addingRoom && Object.entries(handles).map(([handle,label])=><button key={handle} type="button" className={`resize-handle resize-${handle}`} disabled={disabled} aria-label={`Ubah saiz ${label}`} title={`Seret ${label}. Anak panah untuk laras; Shift untuk langkah kecil.`} {...events(room,handle,bounds)} onClick={event=>event.stopPropagation()}/>)}
       </div>;
     })}

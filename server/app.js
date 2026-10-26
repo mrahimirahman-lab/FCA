@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z, ZodError } from 'zod';
-import { projectSchema, roomSchema, roomUpdateSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
+import { projectSchema, roomSchema, roomUpdateSchema, boundsSchema, aiRoomsSchema, inspectionSchema, assetCode, fullDak } from './domain.js';
 import { analyzeConfiguredImage, providerSettings, providerHealth } from './ai-provider.js';
 import { convertDwg } from './cad.js';
 import { rotateRoomBounds } from './plan.js';
@@ -160,14 +160,34 @@ export function createApp({ dataDir = process.env.FCA_DATA_DIR || path.resolve('
   });
   let aiBusy = false;
   app.post('/api/projects/:id/analyze/:kind', async (req,res) => {
-    const p = project(req); const kind = z.enum(['plan','damage']).parse(req.params.kind);
-    const item = kind === 'plan' ? p.plan : photo(req.body.photoId);
+    const p = project(req); const kind = z.enum(['plan','room','damage']).parse(req.params.kind);
+    const input=kind==='room'?z.object({roomId:idSchema,planId:idSchema,bounds:boundsSchema.optional()}).parse(req.body):req.body;
+    const item = kind !== 'damage' ? p.plan : photo(req.body.photoId);
     if (!item) throw Object.assign(new Error('Muat naik imej dahulu.'), { status: 400 });
     if (aiBusy) throw Object.assign(new Error('Analisis lain sedang berjalan. Cuba sebentar lagi.'), { status: 429 });
-    const room = p.rooms.find(r => r.id === req.body.roomId);
-    if (kind === 'damage' && !room) throw Object.assign(new Error('Pilih ruang pemeriksaan.'), { status: 400 });
+    const room = p.rooms.find(r => r.id === input.roomId);
+    if (kind !== 'plan' && !room) throw Object.assign(new Error('Pilih ruang yang telah didaftarkan.'), { status: 400 });
+    if(kind==='room')checkPlanVersion(p,input.planId);
+    const previousRoom=kind==='room'?JSON.stringify({name:room.name,bounds:room.bounds}):null;
+    const targetRoom=kind==='room'?{name:room.name,bounds:input.bounds||room.bounds}:undefined;
     aiBusy = true;
-    try { const image = fs.readFileSync(path.join(dataDir,'uploads',`${item.id}.png`)); const result=await analyze({ kind, image, key: aiKey, model: aiSettings.model, settings:aiSettings, roomName: room?.name }); if(kind==='plan')checkPlanVersion(p,item.id); res.json(result); }
+    try {
+      const image=fs.readFileSync(path.join(dataDir,'uploads',`${item.id}.png`));
+      const result=await analyze({kind:kind==='room'?'plan':kind,image,key:aiKey,model:aiSettings.model,settings:aiSettings,roomName:room?.name,targetRoom});
+      if(kind!=='damage')checkPlanVersion(p,item.id);
+      if(kind==='room') {
+        const current=p.rooms.find(r=>r.id===room.id);
+        if(!current || previousRoom!==JSON.stringify({name:current.name,bounds:current.bounds}))throw Object.assign(new Error('Butiran ruang telah berubah semasa analisis. Muat semula sebelum mencuba lagi.'),{status:409});
+        const parsed=aiRoomsSchema.safeParse(result);
+        if(!parsed.success || parsed.data.rooms.length>1)throw Object.assign(new Error('AI tidak memberikan satu sempadan ruang yang jelas. Laras pemegang secara manual atau cuba semula.'),{status:502});
+        if(!parsed.data.rooms.length)throw Object.assign(new Error('AI belum dapat mengenal pasti sempadan ruang ini. Laras lokasi anggaran atau pemegang secara manual.'),{status:422});
+        const candidate=parsed.data.rooms[0];
+        // Return a draft only. IDs, materials, room numbering and inspections
+        // are changed only through their existing explicit save workflows.
+        return res.json({roomId:room.id,planId:item.id,bounds:candidate.bounds,confidence:candidate.confidence,notes:parsed.data.notes});
+      }
+      res.json(result);
+    }
     finally { aiBusy = false; }
   });
   app.use('/api', (_req,res) => res.status(404).json({ error: 'Laluan API tidak ditemui.' }));

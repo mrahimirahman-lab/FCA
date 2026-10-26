@@ -1,10 +1,11 @@
 import { aiRoomsSchema, aiDamageSchema } from './domain.js';
 import { analysisPrompt, roomOutput, damageOutput } from './ai-contract.js';
+import {warnOverlappingRooms} from './plan-vision.js';
 
 
-export async function analyzeImage({ kind, image, key, model, roomName = '', fetchImpl = fetch }) {
+export async function analyzeImage({ kind, image, key, model, roomName = '', targetRoom,fetchImpl = fetch }) {
   if (!key) throw Object.assign(new Error('AI belum diaktifkan. Tetapkan INSPECTION_AI_API_KEY pada pelayan. Pemeriksaan manual masih boleh digunakan.'), { status: 503 });
-  const prompt=analysisPrompt(kind,roomName);
+  const prompt=analysisPrompt(kind,roomName,targetRoom);
   let response;
   try {
     response = await fetchImpl('https://api.openai.com/v1/chat/completions', {
@@ -32,6 +33,7 @@ export async function analyzeImage({ kind, image, key, model, roomName = '', fet
   try {
     const choice = result.choices?.[0];
     if (choice?.finish_reason !== 'stop' || choice.message?.refusal) throw new Error();
-    return (kind === 'plan' ? aiRoomsSchema : aiDamageSchema).parse(JSON.parse(choice.message.content));
+    const parsed=(kind === 'plan' ? aiRoomsSchema : aiDamageSchema).parse(JSON.parse(choice.message.content));
+    return kind==='plan'?warnOverlappingRooms(parsed):parsed;
   } catch { throw Object.assign(new Error('Jawapan AI tidak lengkap atau tidak sah. Tiada hasil disimpan; cuba semula atau isi secara manual.'), { status: 502 }); }
 }

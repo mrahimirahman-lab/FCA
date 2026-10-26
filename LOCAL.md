@@ -77,6 +77,18 @@ Versi terkini menerima pelan AutoCAD `.dwg` melalui butang muat naik yang sama, 
 
 Untuk papan kekunci, fokus pada kotak atau pemegang dan tekan anak panah untuk langkah 1%; tahan Shift untuk langkah 0.1%. Peratus menunjukkan lokasi/saiz relatif pada gambar, bukan keluasan sebenar. Maklumat bahan ialah catatan pemeriksa dan boleh dilengkapkan kemudian bagi ruang lama.
 
+### Semak semula sempadan ruang dengan AI
+
+Jika AI sudah mengenal pasti nama ruang tetapi kotaknya terlalu besar:
+
+1. Pilih ruang itu pada pelan atau **Daftar ruang**.
+2. Jika kotak berada jauh daripada ruang yang dimaksudkan, alihkan dahulu ke lokasi anggaran yang betul. Nama ruang dan lokasi membantu membezakan ruang yang mempunyai label sama.
+3. Dalam **Butiran ruang**, tekan **Semak sempadan AI** dan tunggu cadangan. AI perlu tersedia melalui penyedia yang telah dikonfigurasi.
+4. Bandingkan kotak baharu dengan muka dalam dinding. AI diarahkan mengabaikan garisan ukuran, paksi dan tag seperti P1/T1. Laras pemegang jika perlu.
+5. Tandakan semakan jika sudah diperiksa dan klik **Simpan**. Kod aset dan rekod pemeriksaan terus menggunakan ruang yang sama. Semakan ini boleh digunakan pada ruang berdaftar tanpa menjalankan semula import seluruh pelan.
+
+Semakan AI ini menghasilkan draf; kegagalan mengekalkan draf sebelumnya. Putaran atau suntingan ruang yang berlaku semasa analisis menyebabkan respons lama ditolak. Kotak masih segi empat dan bukan ukuran keluasan sebenar atau kontur dinding yang tepat. Model tempatan boleh memberi koordinat kurang tepat walaupun nama ruang dibaca dengan betul.
+
 ### Lokasi fail dan orientasi
 
 Untuk membetulkan orientasi drawing, buka **Pelan & daftar aset** selepas memuat naik pelan. Di atas gambar, gunakan **Kiri 90°**, **Kanan 90°** atau **Putar 180°**. Setiap klik menyimpan putaran; tunggu mesej **Orientasi disimpan** sebelum meneruskan. Analisis AI menggunakan orientasi yang disimpan. Kedudukan ruang sedia ada diselaraskan bersama putaran dan kod aset kekal sama. Bagi PDF, kawalan ini memutar halaman yang sedang digunakan; memilih halaman PDF lain memulakan orientasi halaman baharu. Butang **Fail asal** untuk DWG masih memuat turun fail sumber asal.

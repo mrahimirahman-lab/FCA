@@ -78,16 +78,13 @@ Jika pelan sudah mempunyai ruang berdaftar, butang analisis semula pelan disekat
 
 Untuk kembali ke OpenAI, tetapkan `INSPECTION_AI_PROVIDER=openai` dan sediakan kunci/kredit API yang sah; mulakan semula FCA.
 
-## Kemas kini pembaikan had jawapan sahaja
+## Semak sempadan dan kemas kini aplikasi
 
-Jika FCA anda sudah mempunyai sokongan Ollama dan ralat di atas, pembaikan ini hanya memerlukan dua fail pelayan; tiada dependency baharu atau perubahan frontend:
+Arahan analisis kini meminta kotak mengikut muka dalam dinding bilik serta mengabaikan garisan dimensi, paksi dan tag pintu/tingkap. Ollama menerima imej dengan grid piksel biru bertitik sebagai pembaris sementara; grid bukan dinding dan bukan petak untuk diikuti. Dimensi imej dan koordinat kekal sama, dan fail pelan asal tidak ditulis semula. Pertindihan ketara antara kotak cadangan ditandakan untuk semakan.
 
-1. Hentikan FCA dengan **Ctrl+C** dan simpan sandaran `data` serta `.env` seperti biasa.
-2. Muat turun ZIP terkini melalui **Code → Download ZIP** dan ekstrak ke folder berasingan.
-3. Dalam folder `server` daripada ZIP baharu, salin **`ai-contract.js`** dan **`ollama.js`**.
-4. Tampal kedua-duanya ke folder `server` dalam salinan FCA yang anda jalankan, dan pilih **Replace the files in the destination**. Kedua-dua fail perlu diganti bersama.
-5. Buka Command Prompt di folder aplikasi yang mengandungi `package.json` dan jalankan `npm start`. Pastikan proses lama sudah dihentikan dan Ollama masih berjalan.
-6. Muat semula pelayar dan cuba sekali lagi. Kemas kini ini tidak memerlukan `npm ci` atau `npm run build` kerana hanya kod pelayan berubah.
+Untuk ruang yang sudah diimport, gunakan **Butiran ruang → Semak sempadan AI**. Model memfokus satu ruang, dan hasilnya hanya dipaparkan dalam draf sebelum **Simpan**. Nama/kod aset, material dan rekod pemeriksaan dikekalkan. Jika hasil masih tidak tepat, laras pemegang secara manual. Pembaikan ini mengubah prompt dan input visual, bukan melatih semula model atau menjamin segmentasi dinding tepat.
+
+Versi terkini menggunakan fail pelayan tambahan dan perubahan paparan web. Kemas kini melalui ZIP penuh mengikut [LOCAL.md](LOCAL.md): hentikan FCA, sandarkan `data` dan `.env`, ekstrak ZIP baharu, salin data/tetapan, kemudian jalankan `npm ci --include=dev`, `npm run build` dan `npm start`. Jangan gunakan panduan lama menggantikan dua fail pelayan sahaja untuk naik taraf ke versi ini.
 
 ## Bukti pengesahan dan batasannya
 

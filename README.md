@@ -48,6 +48,10 @@ Pelarasan ruang menyokong tetikus, sentuhan dan papan kekunci: fokus pada kotak 
 
 Material setiap ruang boleh dipilih daripada cadangan atau ditaip sendiri, termasuk kemasan; setiap medan maksimum 200 aksara dan boleh dikosongkan. Rekod lama tidak memerlukan migrasi dan medan belum diisi dipaparkan sebagai **Belum direkodkan**. Pemeriksaan, laporan cetak/PDF dan CSV memaparkan **material ruang semasa** daripada daftar ruang, bukan snapshot material pada tarikh pemeriksaan. Material dimasukkan/disemak oleh pemeriksa; aplikasi tidak menganggapnya sebagai pengenalpastian bahan oleh AI.
 
+Untuk kotak AI yang terlalu besar, pilih ruang sedia ada dan gunakan **Semak sempadan AI** dalam **Butiran ruang**. Model menumpukan satu ruang dengan nama dan lokasi anggaran semasanya. Cadangan hanya mengubah draf sempadan dan membatalkan tanda semakan ruang; semak dinding, laras pemegang jika perlu, kemudian **Simpan**. Nama/nombor ruang, kod aset, material dan rekod pemeriksaan dikekalkan. Tiada rekod berubah sebelum simpanan. Respons yang kabur, kosong, mempunyai beberapa calon atau merujuk pelan/ruang yang sudah berubah ditolak.
+
+Arahan analisis merujuk muka dalam dinding dan membezakan garisan ukuran, paksi serta tag pintu/tingkap. Untuk Ollama, grid piksel biru sementara ditambah pada imej inferens yang cukup besar, pada dimensi dan skala sama; pelan/foto asal yang disimpan tidak diubah. Pertindihan ketara antara cadangan diberi amaran tanpa membetulkan koordinat secara tekaan. Ini penambahbaikan prompt dan rujukan visual, bukan latihan semula model atau algoritma segmentasi dinding. Hasil masih kotak segi empat; ruang berbentuk L/tidak sekata memerlukan semakan anggaran. Ujian protokol/pelayar menggunakan jawapan terkawal, dan ketepatan model sebenar pada pelan pengguna perlu dinilai pada komputer pengguna.
+
 ## Struktur kod DAK
 
 Berdasarkan screenshot pengguna “Jadual 7: Struktur DAK Blok Bangunan Bagi Bangunan”:

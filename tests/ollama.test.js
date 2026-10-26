@@ -89,6 +89,24 @@ test('local readiness distinguishes missing, text-only and remote models and pre
   const manual=await f.request(`/projects/${f.p.id}/rooms`,'POST',{rooms:[{name:'Manual',bounds:{x:0,y:0,width:20,height:20}}]});assert.equal(manual.status,201);
 });
 
+test('focused local room analysis uses the saved plan and returns draft bounds without changing assets or materials',async t=>{
+  const f=await localFixture(t);
+  const p=(await f.request(`/projects/${f.p.id}/rooms`,'POST',{rooms:[{name:'BILIK 1',bounds:{x:5,y:5,width:70,height:70},materials:{wall:'Bata',floor:'Jubin',ceiling:'Gipsum'}}]})).data;
+  const room=p.rooms[0];
+  const response=await f.request(`/projects/${p.id}/analyze/room`,'POST',{roomId:room.id,planId:p.plan.id,bounds:{x:10,y:10,width:60,height:60}});
+  assert.equal(response.status,200);assert.deepEqual(response.data.bounds,plan.rooms[0].bounds);assert.equal(response.data.roomId,room.id);
+  assert.deepEqual((await f.request('/projects')).data[0],p);
+  const call=f.calls.find(c=>c.path==='/api/chat');assert.equal(call.body.format.properties.rooms.maxItems,1);
+  assert.match(call.body.messages[0].content,/Fokus SATU ruang/);assert.match(call.body.messages[0].content,/BILIK 1/);assert.match(call.body.messages[0].content,/muka DALAM dinding/);assert.match(call.body.messages[0].content,/P1\/P2\/P3/);
+  assert.ok(call.body.messages[0].content.includes('"bbox":[10,10,70,70]'));assert.match(call.body.messages[0].content,/anggaran lama dalam piksel/);
+  assert.equal((await f.request(`/projects/${p.id}/analyze/room`,'POST',{roomId:room.id,planId:f.photo.id.replace(/^./,f.photo.id[0]==='a'?'b':'a')})).status,409);
+  for(const rooms of [[],[...pixelPlan.rooms,...pixelPlan.rooms]]) {
+    f.state.output={rooms,notes:'Controlled ambiguous output.'};
+    assert.ok([422,502].includes((await f.request(`/projects/${p.id}/analyze/room`,'POST',{roomId:room.id,planId:p.plan.id})).status));
+    assert.deepEqual((await f.request('/projects')).data[0],p);
+  }
+});
+
 test('local settings reject external destinations, redirects, cloud tags and unknown providers',async()=>{
   for(const baseUrl of ['https://127.0.0.1:11434','http://example.com','http://user:pass@127.0.0.1:11434','http://127.0.0.1:11434/api']) {
     const settings=localConfiguration({baseUrl});assert.ok(settings.error);
@@ -138,6 +156,7 @@ test('local pixel corners use the exact resized PNG dimensions for wide, tall an
       const scale=Math.min(1,1600/width,1600/height);
       assert.equal(sent.width,Math.round(width*scale));assert.equal(sent.height,Math.round(height*scale));
       assert.match(body.messages[0].content,new RegExp(`${sent.width} piksel lebar dan ${sent.height} piksel tinggi`));
+      if(width>400)assert.match(body.messages[0].content,/Grid BIRU/);
       assert.equal(body.format.properties.rooms.items.properties.bbox.items.maximum,Math.max(sent.width,sent.height));
       return new Response(JSON.stringify({done:true,done_reason:'stop',message:{content:JSON.stringify({...pixelPlan,rooms:[{...pixelPlan.rooms[0],bbox}]})}}));
     }});

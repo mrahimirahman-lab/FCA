@@ -54,6 +54,17 @@ test('legacy rooms without materials remain editable and accept partial material
   assert.equal(result.data.rooms[0].code,room.code);
 });
 
+test('focused room AI results for a concurrently edited room are rejected without overwriting the manual edit',async t=>{
+  let release,started;const ready=new Promise(resolve=>started=resolve),gate=new Promise(resolve=>release=resolve);
+  const f=await fixture(t,{analyze:async({kind,targetRoom})=>{assert.equal(kind,'plan');assert.equal(targetRoom.name,'Pejabat');started();await gate;return {rooms:[{name:'Pejabat',bounds:{x:10,y:10,width:20,height:20},confidence:.7}],notes:'Controlled result.'};}});
+  const p=await f.project();const image=await f.upload();await f.request(`/projects/${p.id}/plan`,'PUT',{photoId:image.id});
+  const room=(await f.request(`/projects/${p.id}/rooms`,'POST',{rooms:[{name:'Pejabat',bounds:{x:5,y:5,width:70,height:70}}]})).data.rooms[0];
+  const pending=f.request(`/projects/${p.id}/analyze/room`,'POST',{roomId:room.id,planId:image.id});
+  let edited;
+  try {await ready;edited=await f.request(`/projects/${p.id}/rooms/${room.id}`,'PATCH',{...room,bounds:{x:8,y:8,width:40,height:40}});assert.equal(edited.status,200);} finally {release();}
+  assert.equal((await pending).status,409);assert.deepEqual((await f.request('/projects')).data[0],edited.data);
+});
+
 test('hosting password protects application, records and images while health checks stay public',async t=>{
   const f=await fixture(t,{accessUser:'inspector',accessPassword:'test-password-only',aiKey:'test-placeholder'});
   assert.deepEqual((await f.request('/health')).data,{ok:true});
