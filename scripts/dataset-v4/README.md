@@ -10,6 +10,14 @@ Use the Python environment already installed by Unsloth Studio:
 
 Keep `prepare.py` and `evaluator.html` together. They use the existing `datasets` and `Pillow` packages; no model is loaded by this helper.
 
+If V3 was created without selecting the old V2 dataset, the four-row combined file will not exist. Pass the three-unit V3 file and the separate one-row Mantin V2 file instead:
+
+```powershell
+& 'C:\pinokio\api\unsloth.git\env\Scripts\python.exe' prepare.py 'C:\path\jkr70-3-unit-V3-DRAF.parquet' 'C:\path\FCA-V4' 'C:\path\kuarters-mantin-14-ruang-V2-DRAF.parquet'
+```
+
+The files are combined in memory and the same drawing-level training/evaluation split is enforced. Original files are preserved; a three-unit-only input is not silently split into training and evaluation crops from the same drawing.
+
 V4 focuses on interior grounding first. It normalizes validated pixel boxes to Qwen3-VL's native 0–1000 coordinate convention, creates a single JSON-list output format, and removes explanatory boilerplate from assistant targets. Absent-room examples teach an empty `[]` response. Same-name rooms are preserved and their single-target queries are disambiguated by coarse image position.
 
 | File | Contents |

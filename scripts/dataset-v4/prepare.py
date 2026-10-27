@@ -2,13 +2,21 @@ import sys,json,re,hashlib,base64,io,zipfile
 from collections import Counter
 from pathlib import Path
 from PIL import Image as PILImage
-from datasets import Dataset,Features,Image,Value,load_dataset
+from datasets import Dataset,Features,Image,Value,load_dataset,concatenate_datasets
 
 source,out=Path(sys.argv[1]),Path(sys.argv[2])
+mantin_source=Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3] else None
 out.mkdir(parents=True,exist_ok=True)
 ds=load_dataset('parquet',data_files=str(source),split='train',cache_dir=str(out/'cache'))
+if len(ds)==3 and mantin_source is not None:
+    mantin=load_dataset('parquet',data_files=str(mantin_source),split='train',cache_dir=str(out/'cache'))
+    if len(mantin)!=1:
+        raise SystemExit('Fail V2 tambahan mesti mempunyai satu baris pelan Mantin dengan 14 ruang.')
+    ds=concatenate_datasets([mantin.cast_column('image',Image(decode=False)),ds.cast_column('image',Image(decode=False))])
+elif mantin_source is not None:
+    raise SystemExit('Fail V2 tambahan hanya diperlukan apabila input V3 mempunyai 3 baris.')
 if len(ds)!=4:
-    raise SystemExit('Pilih gabungan-4-sampel-V3-DRAF.parquet yang mempunyai 4 baris, bukan fail model atau dataset 3 unit sahaja.')
+    raise SystemExit('Input perlu gabungan 4 baris. Jika V3 mempunyai 3 baris, pilih juga fail Parquet V2 lama sebagai argumen tambahan.')
 raw=ds.cast_column('image',Image(decode=False))
 features=Features({'image':Image(),'conversations':[{'from':Value('string'),'value':Value('string')}]})
 train,evaluation,cases,images,exterior=[],[],[],{},[]
@@ -99,7 +107,7 @@ for filename,rows in [('V4-latihan-24.parquet',train),('V4-penilaian-8.parquet',
         assert all(set(a)=={'label','bbox_2d'} for a in answer)
 (out/'rekod-kawasan-luar-untuk-fasa-seterusnya.json').write_text(json.dumps(exterior,ensure_ascii=False,indent=2),encoding='utf-8')
 public_images={k:{a:b for a,b in v.items() if a not in ['bytes','url']} for k,v in images.items()}
-manifest={'version':4,'status':'prepared_not_trained','units':'relative_0_1000','output':'JSON list of label and bbox_2d; [] for absent target','scope':'interior grounding first; exterior reference retained separately','source_dataset_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'train':{'rows':24,'unique_images':3,'source_groups':1,'single':18,'multi':3,'absent':3},'evaluation':{'rows':8,'unique_images':1,'source_groups':1,'single':6,'multi':1,'absent':1},'images':public_images,'cases':cases,'reference_geometry':'user-reviewed draft transfer, not surveyed measurements','requires_fresh_base_model':True,'training_executed':False}
+manifest={'version':4,'status':'prepared_not_trained','units':'relative_0_1000','output':'JSON list of label and bbox_2d; [] for absent target','scope':'interior grounding first; exterior reference retained separately','source_dataset_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'additional_mantin_dataset_sha256':hashlib.sha256(mantin_source.read_bytes()).hexdigest() if mantin_source else None,'train':{'rows':24,'unique_images':3,'source_groups':1,'single':18,'multi':3,'absent':3},'evaluation':{'rows':8,'unique_images':1,'source_groups':1,'single':6,'multi':1,'absent':1},'images':public_images,'cases':cases,'reference_geometry':'user-reviewed draft transfer, not surveyed measurements','requires_fresh_base_model':True,'training_executed':False}
 (out/'manifest-V4.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
 template=(Path(__file__).with_name('evaluator.html').read_text(encoding='utf-8'))
 display={'cases':cases,'images':{k:{a:b for a,b in v.items() if a!='bytes'} for k,v in images.items()}}

@@ -46,12 +46,17 @@ class PreparationTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_builder(self, rows=None):
+    def run_builder(self, rows=None, additional_rows=None):
         source=self.root/'source.parquet'
         Dataset.from_list(self.rows if rows is None else rows,features=self.features).to_parquet(str(source))
         env=os.environ.copy()
         env.update(HF_HOME=str(self.root/'hf'),HF_HUB_OFFLINE='1',HF_DATASETS_OFFLINE='1')
-        return subprocess.run([sys.executable,str(self.script),str(source),str(self.root/'out')],
+        command=[sys.executable,str(self.script),str(source),str(self.root/'out')]
+        if additional_rows is not None:
+            additional=self.root/'additional.parquet'
+            Dataset.from_list(additional_rows,features=self.features).to_parquet(str(additional))
+            command.append(str(additional))
+        return subprocess.run(command,
                               text=True,capture_output=True,env=env)
 
     def test_grouped_split_normalized_targets_negatives_and_profile(self):
@@ -103,6 +108,20 @@ class PreparationTests(unittest.TestCase):
         result=self.run_builder(self.rows[1:])
         self.assertNotEqual(result.returncode,0)
         self.assertIn('4 baris',result.stderr)
+
+    def test_accepts_three_unit_source_with_separate_mantin_v2(self):
+        result=self.run_builder(self.rows[1:],[self.rows[0]])
+        self.assertEqual(result.returncode,0,result.stderr)
+        manifest=json.loads((self.root/'out'/'manifest-V4.json').read_text())
+        self.assertEqual(manifest['train']['rows'],24)
+        self.assertEqual(manifest['evaluation']['rows'],8)
+        self.assertIsNotNone(manifest['additional_mantin_dataset_sha256'])
+        self.assertEqual(manifest['images']['MANTIN']['split'],'evaluation')
+
+    def test_rejects_wrong_additional_v2_file(self):
+        result=self.run_builder(self.rows[1:],self.rows[1:])
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('satu baris',result.stderr)
 
     def test_rejects_invalid_pixel_bounds_without_clamping(self):
         answer=json.loads(self.rows[1]['conversations'][1]['value'])
