@@ -91,3 +91,11 @@ Versi terkini menggunakan fail pelayan tambahan dan perubahan paparan web. Kemas
 Pengesahan pembangunan merangkumi kontrak HTTP Ollama melalui pelayan ujian loopback: metadata vision, imej PNG, output JSON berstruktur, analisis pelan dan kerosakan, import/persistence, ralat, model jauh/teks ditolak serta tiada penghantaran kunci awan. Ujian pelayar memeriksa status sambungan dan aliran pengguna menggunakan respons terkawal.
 
 Inferens model Ollama sebenar pada Windows/GPU pengguna **belum disahkan**. Runtime Ollama dan model tidak dipasang oleh aplikasi secara automatik. Ketepatan serta masa respons perlu dinilai pada komputer dan imej sebenar anda selepas pemasangan. Dokumentasi kontrak API rasmi: https://github.com/ollama/ollama/blob/main/docs/api.md.
+
+## Percubaan latihan Qwen3-VL V4
+
+[Penjana V4](scripts/dataset-v4/README.md) menyediakan data latihan daripada Parquet gabungan V3 pada komputer pengguna. Ia menggunakan koordinat relatif 0–1000, contoh mencari satu bilik, contoh semua bilik dan contoh sasaran yang tiada. Tiga potongan JKR70 dikekalkan dalam satu kumpulan latihan; pelan Mantin diasingkan untuk penilaian. Bilangan tugasan tidak sama dengan bilangan pelan bebas.
+
+Penjana menghasilkan fail latihan/penilaian berasingan, profil YAML Unsloth dan halaman perbandingan kotak yang boleh dibuka tanpa Internet. Data asal dikekalkan. Ia menggunakan Python dalam persekitaran Unsloth, bukan `npm`, dan tidak memulakan latihan atau memasang model. Contoh kawasan luar disimpan untuk fasa seterusnya sementara percubaan ini memfokus lokasi ruang dalaman.
+
+Output percubaan V4 ialah `label` dan `bbox_2d` relatif 0–1000. Kontrak Ollama FCA di atas masih menggunakan piksel; penyambungan model memerlukan penukar unit yang jelas dan pengesahan berasingan. Kejayaan menyediakan data, penurunan loss atau JSON yang sah tidak menjamin sempadan dinding yang tepat.
