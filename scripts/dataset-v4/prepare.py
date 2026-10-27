@@ -122,7 +122,7 @@ profile='''training:
   warmup_steps: 3
   max_steps: 48
   save_steps: 24
-  eval_steps: 24
+  eval_steps: 0.5
   early_stopping_patience: 1
   weight_decay: 0.01
   random_seed: 3407
@@ -149,7 +149,7 @@ readme='''FCA V4 — LATIHAN LOKASI RUANG DALAMAN
 1. Pilih model asal unsloth/Qwen3-VL-2B-Instruct, kaedah QLoRA 4-bit. Mulakan run baharu; pelan Mantin mesti dikecualikan daripada latihan V4, termasuk adapter V2/V3 yang pernah dilatih dengannya.
 2. Dataset latihan: V4-latihan-24.parquet. Ia mempunyai 18 tugasan satu bilik, 3 tugasan semua bilik dan 3 tugasan sasaran yang tiada. Ini 3 imej daripada satu drawing, bukan 24 bangunan.
 3. Evaluation Dataset: V4-penilaian-8.parquet. Ia menggunakan satu pelan Mantin berasingan dengan 8 tugasan. Fail penilaian tidak dimasukkan ke slot latihan.
-4. Selepas memilih model dan memuat naik kedua-dua dataset, gunakan Configuration > Load YAML > FCA-V4-config.yaml. Pastikan Max Steps 48, batch 1, gradient accumulation 1, LR 0.00005, Image Size 768, Eval Steps 24, LoRA rank 8/alpha 16 dan Assistant completions only aktif.
+4. Selepas memilih model dan memuat naik kedua-dua dataset, gunakan Configuration > Load YAML > FCA-V4-config.yaml. Pastikan Max Steps 48, batch 1, gradient accumulation 1, LR 0.00005, Image Size 768, Eval Steps 0.5 (setiap 24 daripada 48 langkah), LoRA rank 8/alpha 16 dan Assistant completions only aktif. Kawalan Eval Steps terletak pada Parameters > Advanced > Training Hyperparameters > Schedule, selepas LoRA Settings.
 5. Semak Token Preview jika tersedia: jawapan JSON mesti lengkap dan token assistant tidak semuanya dimask. Profil ini cadangan percubaan pada GPU 8 GB; penggunaan VRAM sebenar perlu dipantau pada komputer anda.
 6. Jalankan Start Training. Ujian ini tidak menjamin model lebih tepat. Catat eval loss dan semak hasil koordinat selepas latihan.
 7. Buka BUKA-UJIAN-V4.html. Pilih kes, lampirkan PNG yang dinyatakan dan salin arahan yang disediakan kepada BASE MODEL dan V4 dalam perbandingan baharu. Guna imej, arahan dan tetapan penjanaan yang sama; had output 128 bagi satu sasaran dan 1024 bagi semua ruang.

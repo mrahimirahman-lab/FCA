@@ -101,7 +101,8 @@ class PreparationTests(unittest.TestCase):
         profile=yaml.safe_load((out/'FCA-V4-config.yaml').read_text())
         self.assertTrue(profile['training']['train_on_completions'])
         self.assertEqual(profile['training']['max_steps'],48)
-        self.assertEqual(profile['training']['eval_steps'],24)
+        self.assertEqual(profile['training']['eval_steps'],0.5)
+        self.assertEqual(profile['training']['max_steps'] * profile['training']['eval_steps'],24)
         self.assertFalse(profile['lora']['finetune_vision_layers'])
 
     def test_rejects_three_row_source_instead_of_leaking_same_drawing_into_eval(self):

@@ -33,6 +33,8 @@ The 24 training tasks share just **three images from one drawing**. The eight ev
 
 Select the original `unsloth/Qwen3-VL-2B-Instruct` and QLoRA 4-bit in a new Unsloth run. A V2/V3 adapter has already seen Mantin, so it cannot provide the intended V4 holdout. Upload training and evaluation files separately, then load the YAML profile through Configuration → Load YAML. Model and dataset choices are intentionally not embedded in that profile. The profile is an initial experiment, not a guarantee of VRAM fit or improved localization.
 
+The Eval Steps control is in Parameters → Advanced → Training Hyperparameters → Schedule, below LoRA Settings. Use `0.5` for evaluation every 24 steps in a 48-step run. This matches the UI's fractional interval. If an older generated profile contains `eval_steps: 24`, change that line to `eval_steps: 0.5` or edit the field after loading the profile; rebuilding the Parquet datasets is unnecessary.
+
 After training, compare the same image and prompt on the base model and V4. The evaluator uses one-to-one same-label bbox matching, counts missing references as zero IoU, reports extra boxes through precision, and handles absent-target cases separately. A valid JSON object can be wrapped as a one-element list for evaluation; coordinates are never guessed or clamped. Repeated room names are matched for maximum summed IoU within their label group.
 
 Reference geometry remains a reviewed visual transfer, not surveyed measurements. A rectangular bbox around an L-shaped room includes space outside its contour. Evaluation loss and successful JSON generation alone do not establish accurate wall boundaries. More independent annotated plans will be needed to assess generalization.
