@@ -217,7 +217,7 @@ def parse_svg(payload, width, height):
                              "viewBox": root.get("viewBox"), "mapping": "SVG coordinates are PNG pixels, as in the official loader; no viewBox scaling"}
 
 
-def audit(source_path, output, limit=20):
+def audit(source_path, output, limit=20, sample_seed=None):
     if output.exists():
         raise ValueError("Output exists; choose a new directory")
     source = Source(source_path)
@@ -228,6 +228,8 @@ def audit(source_path, output, limit=20):
             raise ValueError("No paired F1_scaled.png/model.svg found")
         if not 1 <= limit <= 200:
             raise ValueError("Audit limit must be 1–200; review a manageable batch")
+        if sample_seed is not None:
+            random.Random(sample_seed).shuffle(candidates)
         output.mkdir(parents=True)
         (output/"images").mkdir()
         samples, errors, pixels = [], [], {}
@@ -263,13 +265,11 @@ def audit(source_path, output, limit=20):
                     "available_pairs": len(candidates), "selected_pairs": min(limit, len(candidates)),
                     "samples": samples, "errors": errors, "training_executed": False,
                     "status": "audit_only_pending_visual_review_and_explicit_splits"}
+        if sample_seed is not None:
+            manifest["sampling"] = {"method": "seeded_random_candidate_order", "seed": sample_seed}
         manifest_bytes = json.dumps(manifest, ensure_ascii=False, indent=2).encode()
         (output/"manifest-cubicasa.json").write_bytes(manifest_bytes)
-        display = {"manifest_sha256": sha(manifest_bytes), "samples": [{**sample, "url": "data:image/png;base64,"+
-                   base64.b64encode((output/sample["file"]).read_bytes()).decode()} for sample in samples]}
-        template = Path(__file__).with_name("review.html").read_text(encoding="utf-8")
-        (output/"BUKA-SEMAKAN-CUBICASA.html").write_text(template.replace("__PAYLOAD__", json.dumps(
-            display, ensure_ascii=False).replace("<", "\\u003c")), encoding="utf-8")
+        write_review(output, manifest)
         (output/"LESEN.txt").write_text(LICENSE, encoding="utf-8")
         print(f"Audit: {len(samples)} sampel, {sum(len(s['rooms']) for s in samples)} ruang jenis disokong.")
         print(f"Layak untuk semakan eksport: {sum(s['eligible'] for s in samples)}. Ralat fail: {len(errors)}.")
@@ -277,6 +277,18 @@ def audit(source_path, output, limit=20):
         return manifest
     finally:
         source.close()
+
+
+def write_review(folder, manifest, assignments=None):
+    split_by_id = {identifier: split for split, ids in (assignments or {}).items() for identifier in ids}
+    display = {"manifest_sha256": sha((folder/"manifest-cubicasa.json").read_bytes()),
+               "batch_mode": assignments is not None,
+               "samples": [{**sample, "batch_split": split_by_id.get(sample["id"]),
+                            "url": "data:image/png;base64,"+base64.b64encode(
+                                (folder/sample["file"]).read_bytes()).decode()} for sample in manifest["samples"]]}
+    template = Path(__file__).with_name("review.html").read_text(encoding="utf-8")
+    (folder/"BUKA-SEMAKAN-CUBICASA.html").write_text(template.replace("__PAYLOAD__", json.dumps(
+        display, ensure_ascii=False).replace("<", "\\u003c")), encoding="utf-8")
 
 
 NATIVE = "Gunakan koordinat relatif 0–1000 bagi keseluruhan imej. bbox_2d ialah [kiri,atas,kanan,bawah]. Pulangkan senarai JSON sahaja; setiap objek mempunyai label dan bbox_2d. Label ialah jenis ruang, bukan nombor bilik. Kekalkan setiap ruang berasingan walaupun jenisnya sama. Kotak ruang L merangkumi keseluruhan poligon lantainya. Tamat selepas JSON."
@@ -361,6 +373,7 @@ def export(audit_folder, review_path, train_path, val_path, output, test_path=No
               "source_manifest_sha256":sha(raw),"review_sha256":sha(review_path.read_bytes()),
               "label_task":manifest["label_task"],"training_executed":False,
               "split_provenance":"user-supplied lists; original split membership not independently verified",
+              "review_method":review.get("review_method", "individual_visual_review"),
               "splits":{s:{"images":len(assignments[s]),"rows":len(rows[s]),"sample_ids":[i["id"] for i in assignments[s]]} for s in rows}}
     (output/"manifest-eksport.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
     (output/"LESEN.txt").write_text(LICENSE,encoding="utf-8")
@@ -368,14 +381,112 @@ def export(audit_folder, review_path, train_path, val_path, output, test_path=No
     return result
 
 
+def batch(source, output, train_count=100, val_count=20, test_count=20, seed=3407, audit_limit=200):
+    """Prepare a custom split using source labels and automated quality screening.
+
+    Does not claim individual visual approval of the batch or official split membership.
+    """
+    counts = {"train": train_count, "validation": val_count, "test": test_count}
+    if any(isinstance(n, bool) or not isinstance(n, int) or n < 1 for n in counts.values()):
+        raise ValueError("Batch requires positive train, validation and test image counts")
+    needed = sum(counts.values())
+    if needed > audit_limit:
+        raise ValueError("Requested image counts exceed the candidate audit limit")
+    if output.exists():
+        raise ValueError("Batch output exists; choose a new directory")
+    output.mkdir(parents=True)
+    audit_folder = output/"audit"
+    manifest = audit(source, audit_folder, audit_limit, sample_seed=seed)
+    eligible, svg_seen, duplicate_groups = [], set(), []
+    for sample in manifest["samples"]:
+        if not sample["eligible"]:
+            continue
+        if sample["svg_sha256"] in svg_seen:
+            duplicate_groups.append(sample["id"])
+            continue
+        svg_seen.add(sample["svg_sha256"])
+        eligible.append(sample)
+    if len(eligible) < needed:
+        raise ValueError(f"Only {len(eligible)} eligible unique drawings; need {needed}. "
+                         "No training Parquet written. Inspect the audit or choose the full dataset folder.")
+    random.Random(seed).shuffle(eligible)
+    chosen, position = {}, 0
+    for split, count in counts.items():
+        chosen[split] = [s["id"] for s in eligible[position:position+count]]
+        position += count
+        (output/f"custom-{split}.txt").write_text("\n".join(chosen[split])+"\n", encoding="utf-8")
+    selection = {"schema_version":1, "manifest_sha256":sha((audit_folder/"manifest-cubicasa.json").read_bytes()),
+                 "approved_ids":[i for split in chosen.values() for i in split],
+                 "review_method":"automated_source_annotation_quality_screening_not_individual_visual_review"}
+    selection_path = output/"pilihan-batch.json"
+    selection_path.write_text(json.dumps(selection,indent=2),encoding="utf-8")
+    exported = export(audit_folder, selection_path, output/"custom-train.txt", output/"custom-validation.txt",
+                      output/"dataset", output/"custom-test.txt")
+    exported.update(split_provenance="custom_seeded_full_drawing_split_not_official_CubiCasa_benchmark",
+                    seed=seed, candidate_images=manifest["selected_pairs"],
+                    eligible_unique_images=len(eligible), duplicate_svg_groups_excluded=duplicate_groups)
+    (output/"dataset"/"manifest-eksport.json").write_text(json.dumps(exported,ensure_ascii=False,indent=2),encoding="utf-8")
+    write_review(audit_folder, manifest, chosen)
+    steps = min(200, max(1, math.ceil(exported["splits"]["train"]["rows"]/4)))
+    profile = f"""training:
+  max_seq_length: 4096
+  vision_image_size: 768
+  num_epochs: 1
+  learning_rate: 0.00002
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  warmup_steps: {min(5, max(0, steps-1))}
+  max_steps: {steps}
+  save_steps: {max(1, math.ceil(steps/2))}
+  eval_steps: 0.5
+  early_stopping_patience: 0
+  weight_decay: 0.01
+  random_seed: {seed}
+  packing: false
+  train_on_completions: true
+  gradient_checkpointing: unsloth
+  lr_scheduler_type: linear
+lora:
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  finetune_vision_layers: false
+  finetune_language_layers: true
+  finetune_attention_modules: true
+  finetune_mlp_modules: true
+logging:
+  enable_wandb: false
+  enable_tensorboard: false
+  log_frequency: 1
+"""
+    (output/"dataset"/"CubiCasa-config.yaml").write_text(profile,encoding="utf-8")
+    instructions = f"""CUBICASA — BATCH PERCUBAAN LOKAL
+{train_count} imej latihan, {val_count} imej validasi, {test_count} imej ujian. Bilangan baris/tugasan ada dalam dataset/manifest-eksport.json.
+Pembahagian tersendiri seed {seed}; BUKAN pembahagian rasmi CubiCasa5K. Imej penuh kekal dalam satu split. F2 tidak digunakan sebagai sampel bebas. Imej/poligon pendua tepat dan poligon bertanda isu kualiti dikecualikan; ini bukan jaminan bebas pendua visual atau anotasi sempurna.
+Pemilihan batch menggunakan anotasi sumber dan semakan kualiti automatik, BUKAN dakwaan semua imej disemak manusia. Buka audit/BUKA-SEMAKAN-CUBICASA.html dan semak beberapa pelan/kelas sebelum latihan. Jika nampak padanan salah, hentikan dan laporkan ID sampel sebelum melatih.
+Dalam Unsloth: pilih model ASAL unsloth/Qwen3-VL-2B-Instruct, QLoRA 4-bit, Train As Language model. Run baharu FCA-CUBI-01; simpan adapter V4/V5, jangan resume daripadanya.
+Training Dataset: dataset/CubiCasa-latihan.parquet. Evaluation Dataset: dataset/CubiCasa-validasi.parquet. JANGAN masukkan CubiCasa-ujian.parquet ke slot latihan atau validasi.
+Selepas memilih model dan dataset, Load YAML dataset/CubiCasa-config.yaml. Semak Preview gambar dan sharegpt_with_images, batch 1, accumulation 4, LR 0.00002, context 4096, image size 768, rank 8/alpha 16, vision layers OFF dan Assistant completions only ON. Max Steps {steps}, Eval Steps 0.5. Jadual percubaan dihadkan 200 langkah optimizer; ia mungkin berhenti sebelum semua data dilalui jika batch besar. Profil tidak menjamin VRAM muat atau ketepatan meningkat.
+Label ialah jenis ruang (contoh BILIK TIDUR), bukan nama tercetak BILIK 1 atau nombor aset. Nilai pada tugas/rujukan jenis ruang yang sama. Skor lama MANTIN tidak boleh dibandingkan terus dengan label jenis tanpa pemetaan dan penilaian yang jelas.
+Tiada model dimuat turun atau dilatih oleh skrip ini. Latihan hanya bermula apabila anda menekan Start Training. CC BY-NC 4.0: atribusi dan penggunaan bukan komersial.
+"""
+    (output/"BACA-DAHULU.txt").write_text(instructions,encoding="utf-8")
+    print(f"BATCH SIAP: {train_count} train / {val_count} validation / {test_count} test drawings.")
+    print("Custom seeded split, not the official benchmark. Review source overlays before training.")
+    return exported
+
+
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     sub=parser.add_subparsers(dest="command",required=True)
-    a=sub.add_parser("audit");a.add_argument("source",type=Path);a.add_argument("output",type=Path);a.add_argument("--limit",type=int,default=20)
+    a=sub.add_parser("audit");a.add_argument("source",type=Path);a.add_argument("output",type=Path);a.add_argument("--limit",type=int,default=20);a.add_argument("--sample-seed",type=int)
     e=sub.add_parser("export");e.add_argument("audit_folder",type=Path);e.add_argument("review",type=Path);e.add_argument("train_list",type=Path);e.add_argument("val_list",type=Path);e.add_argument("output",type=Path);e.add_argument("--test-list",type=Path)
+    b=sub.add_parser("batch");b.add_argument("source",type=Path);b.add_argument("output",type=Path);b.add_argument("--train-count",type=int,default=100);b.add_argument("--val-count",type=int,default=20);b.add_argument("--test-count",type=int,default=20);b.add_argument("--seed",type=int,default=3407);b.add_argument("--audit-limit",type=int,default=200)
     args=parser.parse_args()
     try:
-        if args.command=="audit":audit(args.source,args.output,args.limit)
+        if args.command=="audit":audit(args.source,args.output,args.limit,args.sample_seed)
+        elif args.command=="batch":batch(args.source,args.output,args.train_count,args.val_count,args.test_count,args.seed,args.audit_limit)
         else:export(args.audit_folder,args.review,args.train_list,args.val_list,args.output,args.test_list)
     except (ValueError,KeyError,OSError,ET.ParseError,zipfile.BadZipFile) as error:
         parser.exit(1,str(error)+"\n")

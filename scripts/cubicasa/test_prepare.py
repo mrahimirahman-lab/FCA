@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+import yaml
 from pathlib import Path
 
 from PIL import Image
@@ -147,6 +148,37 @@ class CubiCasaTests(unittest.TestCase):
         with zipfile.ZipFile(bad,"w") as zip_file:zip_file.writestr("../model.svg","bad")
         with self.assertRaisesRegex(ValueError,"Unsafe"):
             prepare.audit(bad,self.root/"bad-audit")
+
+    def test_custom_batch_keeps_source_groups_separate_and_records_automatic_review(self):
+        self.sample("D", (150,100), [("Bedroom","10,10 60,10 60,60 10,60")])
+        self.sample("E", (160,110), [("Storage","15,15 65,15 65,65 15,65")])
+        self.sample("F", (170,120), [("Closet","20,20 70,20 70,70 20,70")])
+        import shutil
+        shutil.copytree(self.source/"A", self.source/"G")
+        Image.new("RGB", (100,80), "gray").save(self.source/"G"/"F1_scaled.png")
+        out = self.root/"batch"
+        report = prepare.batch(self.source,out,2,1,1,seed=3407,audit_limit=7)
+        self.assertEqual([report["splits"][s]["images"] for s in ["train","validation","test"]], [2,1,1])
+        self.assertIn("not_official",report["split_provenance"])
+        self.assertIn("not_individual_visual_review",report["review_method"])
+        groups = [set(report["splits"][s]["sample_ids"]) for s in ["train","validation","test"]]
+        self.assertFalse(groups[0]&groups[1] or groups[0]&groups[2] or groups[1]&groups[2])
+        self.assertNotIn("C",set.union(*groups))
+        self.assertEqual(len(report["duplicate_svg_groups_excluded"]),1)
+        self.assertFalse({"A", "G"}.issubset(set.union(*groups)))
+        profile = yaml.safe_load((out/"dataset"/"CubiCasa-config.yaml").read_text())
+        self.assertEqual(profile["training"]["batch_size"],1)
+        self.assertEqual(profile["training"]["gradient_accumulation_steps"],4)
+        self.assertTrue(profile["training"]["train_on_completions"])
+        repeat = prepare.batch(self.source,self.root/"batch-repeat",2,1,1,seed=3407,audit_limit=7)
+        self.assertEqual(repeat["splits"],report["splits"])
+
+    def test_batch_refuses_to_train_on_too_few_eligible_images(self):
+        out = self.root/"too-small"
+        with self.assertRaisesRegex(ValueError,"Only 2 eligible"):
+            prepare.batch(self.source,out,1,1,1,audit_limit=3)
+        self.assertTrue((out/"audit"/"manifest-cubicasa.json").exists())
+        self.assertFalse((out/"dataset").exists())
 
 
 if __name__ == "__main__":

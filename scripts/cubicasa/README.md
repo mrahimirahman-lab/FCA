@@ -54,3 +54,19 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python -m unittest discover -s scripts/cu
 ```
 
 Tests cover PNG-coordinate semantics despite mismatched SVG viewBox sizes, affine transforms, duplicate room types, excluded classes, thin-tail preservation/quarantine, reviewed Parquet round trips, split overlap rejection, image/reference fingerprints, directory/ZIP parity and unsafe-input rejection. Tests do not measure a trained model's accuracy.
+
+## Local batch when original split files have not been supplied
+
+Once the conversion has been checked on representative source samples, the explicit `batch` command offers an alternative using **source annotations and automated quality screening**. It is not the same as individually confirming every drawing in the manual review UI. The selection/export manifests record this distinction; no file is described as having full human approval.
+
+```powershell
+& 'C:\pinokio\api\unsloth.git\env\Scripts\python.exe' prepare.py batch 'C:\path\cubicasa5k-full' 'C:\path\CubiCasa-batch-new'
+```
+
+The bootstrap equivalent is `start.ps1 -ReleaseRef <full-commit-sha> -Folder -Batch`. Choose the **full dataset root**, not the three-sample ZIP. It audits a seeded random batch of up to 200 candidate pairs, excludes quality-flagged images and repeated exact RGB/SVG hashes, and selects 100 full drawings for training, 20 for validation and 20 for testing. Both candidate order and split selection use seed 3407. F1/F2 and room tasks from the same drawing are not independently split. Exact hashes cannot guarantee removal of all near-duplicate plans.
+
+This is a **custom split**, not CubiCasa5K's official benchmark partition. If original split files become available, use the explicit reviewed `export` workflow instead. Candidate SVG/PNG source hashes, automatic selection provenance, custom split files and selected IDs are retained. Fewer than 140 eligible unique drawings causes the batch to stop with the audit preserved and **no training Parquet**; it does not silently relax quality checks or turn the three review samples into a full training set.
+
+The output has `audit/`, `dataset/CubiCasa-latihan.parquet`, `dataset/CubiCasa-validasi.parquet`, `dataset/CubiCasa-ujian.parquet`, `dataset/CubiCasa-config.yaml`, custom split/selection metadata and Malay instructions. Row counts depend on the room types present, so 100 training drawings are not 100 rows. Check the generated export manifest and image/target overlays before training. If an alignment defect is found, stop and identify the sample before training, rather than repeatedly fitting an incorrect reference.
+
+The initial Qwen3-VL-2B profile starts from the original base, QLoRA 4-bit, frozen vision tower, image size 768, context 4096, response-only loss, rank 8/alpha 16, LR 2e-5, microbatch 1 and accumulation 4. Optimizer steps are `min(200, ceil(training_rows / 4))`, with evaluation halfway and at the end; the cap can yield a partial epoch. This is an initial resource-conscious experiment, not a claim of accuracy or guaranteed VRAM fit. Select training/validation separately in Unsloth, load the generated YAML **after** dataset selection, and reserve the test Parquet for later evaluation. The script never presses Start Training or downloads weights.
