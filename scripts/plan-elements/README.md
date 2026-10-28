@@ -67,3 +67,25 @@ ELEMENTS_TEST_PYTHON=python3 node --test scripts/plan-elements/test_review.mjs
 ```
 
 Additional synthetic checks cover verified source mapping across directory roots, exact split preservation, calibration provenance, full-class task balance, altered source/stale review rejection, dense-drawing exclusions, minimum-data failure without Parquet, profile generation and offline review/download behavior. No user data is included in these tests.
+
+## Evaluate the trained element adapter by class
+
+`start-evaluation.ps1 -ReleaseRef <pinned commit>` asks for `dataset/manifest-eksport-elemen.json` in the generated element batch. It downloads only generic hash-checked helpers, verifies the element audit/export/prompt relationship and split disjointness, checks test PNG RGB hashes/canvases, source duplicate hashes and all target geometry, and produces a new offline `BUKA-UJIAN-ELEMEN.html`. Training/validation examples are not included.
+
+```sh
+python scripts/plan-elements/evaluate.py /path/to/element-batch /path/to/new-element-evaluation
+```
+
+There are **three queries per test drawing**, with exactly the same one-category prompts exported during training. With 14 test drawings this yields **42 tasks**, not 42 independent drawings. The PNG for a drawing is copied only once. Each query's ID includes its drawing and target class. The page identifies the compared models as the original Qwen3-VL-2B-Instruct and **FCA-ELEMEN-01**, and keeps the existing result validation, matching, output-failure recording and local session/import/export behavior from the room comparison tool. It does not run inference, load weights, send requests to Unsloth or modify the adapter.
+
+Start with the three queries for one drawing, each in a new Unsloth comparison chat with the same clean image, prompt and generation settings for both models. Use the PNG download; do not submit a screenshot containing reference overlays. Copy the page's exact prompt rather than a generic question asking for all classes. An identical image may be reused for the three fresh chats, but changing the page selector never changes Unsloth's attachment. Export results after each session; malformed outputs are recorded without changing/clamping coordinates, and valid empty predictions are still scored as empty.
+
+Results use `plan_elements_paired_test_results`, `case_unit: single_element_class_query`, and explicit **task** counts (`expected_tasks`, `attempted_tasks`, `completed_tasks`) plus `source_drawings` and drawing progress. Per-class summaries show paired-valid task counts, mean box IoU, detection precision/recall and output-failure rates. These summaries are conditional on the same valid-pair subset within each class; they must be read together with failure rates. They are not full-set accuracy if some tasks fail. Test reference fingerprints bind the class-specific geometry and prompt; imports from room benchmarks or another element reference version are rejected. The report is deliberately incompatible with the room report kind, and is not a room-name OCR or CAD-line benchmark.
+
+The element page uses the already-tested Hungarian scoring engine for one-to-one same-label assignments, and reports output failures separately. The UI template has element/task-specific wording and per-class metrics; do not replace it with an older room-evaluator repair template.
+
+```sh
+ELEMENTS_TEST_PYTHON=python3 node --test scripts/plan-elements/test_evaluator.mjs
+```
+
+Additional checks cover exact test-only class prompts, one clean image shared by three independently identified tasks, changed image/reference rejection, per-class failure accounting, explicit drawing/task counts, export/import and mobile behavior. These tests use synthetic drawings; they do not measure model accuracy.
