@@ -70,3 +70,35 @@ This is a **custom split**, not CubiCasa5K's official benchmark partition. If or
 The output has `audit/`, `dataset/CubiCasa-latihan.parquet`, `dataset/CubiCasa-validasi.parquet`, `dataset/CubiCasa-ujian.parquet`, `dataset/CubiCasa-config.yaml`, custom split/selection metadata and Malay instructions. Row counts depend on the room types present, so 100 training drawings are not 100 rows. Check the generated export manifest and image/target overlays before training. If an alignment defect is found, stop and identify the sample before training, rather than repeatedly fitting an incorrect reference.
 
 The initial Qwen3-VL-2B profile starts from the original base, QLoRA 4-bit, frozen vision tower, image size 768, context 4096, response-only loss, rank 8/alpha 16, LR 2e-5, microbatch 1 and accumulation 4. Optimizer steps are `min(200, ceil(training_rows / 4))`, with evaluation halfway and at the end; the cap can yield a partial epoch. This is an initial resource-conscious experiment, not a claim of accuracy or guaranteed VRAM fit. Select training/validation separately in Unsloth, load the generated YAML **after** dataset selection, and reserve the test Parquet for later evaluation. The script never presses Start Training or downloads weights.
+
+## Compare the exported test drawings after training
+
+`evaluate.py` creates a separate offline comparison page from the original batch folder. It reads `dataset/manifest-eksport.json` and `audit/manifest-cubicasa.json`, requires their SHA-256 relationship to match, checks that train/validation/test IDs are disjoint, and revalidates each test image's decoded RGB hash, canvas, room geometry and labels. It exports **only** the test drawings. Existing training data and adapters are unchanged.
+
+```powershell
+& 'C:\pinokio\api\unsloth.git\env\Scripts\python.exe' evaluate.py `
+  'C:\path\CubiCasa-batch-...' 'C:\path\CubiCasa-ujian-new'
+```
+
+Keep `evaluate.py`, `prepare.py`, `score.js` and `evaluator.html` together. The pinned, hash-checked `start-evaluation.ps1 -ReleaseRef <commit>` prompts for the original **export manifest**, then builds and opens this pack in a new Downloads folder. It does not use the full source dataset, load model weights, send prompts, invoke an API or start training.
+
+The user opens a new Unsloth comparison chat per image, downloads the clean PNG from the page, attaches it to both models, copies the exact all-supported-types training prompt, uses identical generation settings, and pastes the two responses. The page's generation fields record the settings; they do not control Unsloth. A confirmation checkbox prevents inadvertently scoring before confirming the inputs. Switching the page selector does **not** change Unsloth's attached image. Repeated identical predictions across different images trigger a warning.
+
+The page calculates a maximum-sum-IoU, one-to-one assignment within each normalized label, with unmatched references scoring zero. Detection precision/recall at IoU ≥ 0.5 use a **separate maximum-cardinality assignment at that threshold**; these assignments can differ. The polynomial Hungarian implementation avoids exponential duplicate-label matching. Extras lower precision. Both the equal-image mean and pooled-reference mean are reported explicitly. These are bounding-box metrics, not polygon IoU, mAP, or building measurements.
+
+Only drawings with **two valid responses** contribute to paired summaries. A malformed/truncated response is not silently converted into an empty prediction or a zero. `[]` is a legitimate explicit no-room prediction and scores accordingly. Reports state completion counts and missing IDs; unfinished tests must not be presented as a full benchmark. Operator notes can record generation failures before rerunning both models with a common token budget. Corrected inputs invalidate their previous score. The browser attempts local draft persistence; export JSON after each session as a portable backup. Import requires the exact benchmark/reference fingerprints and recomputes scores from predictions rather than trusting stored metrics. No requests leave the offline page.
+
+Reference geometry comes from source annotations and recorded review provenance. The custom partition is not the official CubiCasa benchmark; sample 10170 has already been examined during development. Do not keep adjusting training against individual test outcomes and then describe the same set as an untouched blind test. Holdout accuracy is not implied by training loss or by creating this comparison pack. Generated data/results and user drawings must stay out of the public repository.
+
+Additional checks:
+
+```sh
+node --test scripts/cubicasa/test_score.mjs
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python -m unittest discover -s scripts/cubicasa -p 'test_*.py'
+```
+
+Browser integration (Playwright/Chromium and Python/Pillow required; synthetic drawings only):
+
+```sh
+CUBICASA_TEST_PYTHON=python3 node --test scripts/cubicasa/test_evaluator.mjs
+```
