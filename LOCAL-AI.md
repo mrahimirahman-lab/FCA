@@ -99,3 +99,7 @@ Inferens model Ollama sebenar pada Windows/GPU pengguna **belum disahkan**. Runt
 Penjana menghasilkan fail latihan/penilaian berasingan, profil YAML Unsloth dan halaman perbandingan kotak yang boleh dibuka tanpa Internet. Data asal dikekalkan. Ia menggunakan Python dalam persekitaran Unsloth, bukan `npm`, dan tidak memulakan latihan atau memasang model. Contoh kawasan luar disimpan untuk fasa seterusnya sementara percubaan ini memfokus lokasi ruang dalaman.
 
 Output percubaan V4 ialah `label` dan `bbox_2d` relatif 0–1000. Kontrak Ollama FCA di atas masih menggunakan piksel; penyambungan model memerlukan penukar unit yang jelas dan pengesahan berasingan. Kejayaan menyediakan data, penurunan loss atau JSON yang sah tidak menjamin sempadan dinding yang tepat.
+
+## Percubaan augmentasi V5
+
+[Penjana V5](scripts/dataset-v5/README.md) membaca folder V4 yang telah dijana dan menambah dua varian margin serta tugasan pasangan ruang. Ia menyediakan 90 tugasan daripada tiga imej asal JKR70 (satu drawing), bukan 90 pelan bebas. Lapan tugasan MANTIN tidak berubah dan kekal sebagai holdout pembangunan yang telah digunakan berulang kali. Rujukan draf tidak diperbetulkan secara automatik; semak lapisan kotak sebelum latihan. CubiCasa belum dimasukkan. Skrip tidak melatih model atau mengubah integrasi FCA.
