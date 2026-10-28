@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDownToLine, ArrowRight, Building2, Camera, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, Download, FileImage, FileText, FolderOpen, Layers3, LoaderCircle, MapPinned, Plus, RotateCcw, RotateCw, ScanLine, Search, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, Building2, Camera, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, Download, FileImage, FileText, FolderOpen, LayoutDashboard, Layers3, LoaderCircle, MapPinned, Plus, RotateCcw, RotateCw, ScanLine, Search, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import './style.css';
+import Dashboard from './Dashboard.jsx';
 import { projectSchema, aiRoomsSchema, boundsSchema, roomUpdateSchema } from '../server/domain.js';
 import PlanViewport from './PlanViewport.jsx';
 import RoomDeletionDialog from './RoomDeletionDialog.jsx';
@@ -29,11 +30,15 @@ const date = value => new Date(value).toLocaleDateString('ms-MY', { day: 'numeri
 const severityClass = value => ({ Rendah: 'green', Sederhana: 'amber', Tinggi: 'red', Kritikal: 'red' })[value];
 const roomCode = room => room?.code || '';
 const ahuCodes = ['33','25','13','11','00','00','00'];
+const tabLabels = { overview: 'Gambaran keseluruhan', plan: 'Pelan & daftar aset', inspection: 'Pemeriksaan', report: 'Laporan' };
+const tabFromHash = () => Object.hasOwn(tabLabels, window.location.hash.slice(1)) ? window.location.hash.slice(1) : null;
 
 function App() {
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState('');
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(() => tabFromHash() || 'overview');
+  const headingRef = useRef(null);
+  const previousTab = useRef(tab);
   const [health, setHealth] = useState(null);
   const [checkingAi,setCheckingAi]=useState(false);
   const [error, setError] = useState('');
@@ -89,7 +94,11 @@ function App() {
   const roomDirty=Boolean(selectedRoom && roomDraft && JSON.stringify(selectedRoom)!==JSON.stringify(roomDraft));
 
   useEffect(() => {
-    Promise.all([api('/projects'), api('/health')]).then(([p,h]) => { setProjects(p); setProjectId(p[0]?.id || ''); setHealth(h); }).catch(e => setError(e.message));
+    Promise.all([api('/projects'), api('/health')]).then(([p,h]) => {
+      let savedProject;
+      try { savedProject = window.localStorage.getItem('fca.activeProject'); } catch { /* Storage may be unavailable in private browsers. */ }
+      setProjects(p); setProjectId(p.some(item => item.id === savedProject) ? savedProject : p[0]?.id || ''); setHealth(h);
+    }).catch(e => setError(e.message));
     return () => { pdfTask.current?.destroy(); };
   }, []);
   useEffect(() => { setRoomDraft(selectedRoom ? structuredClone(selectedRoom) : null); }, [roomId, selectedRoomVersion]);
@@ -99,6 +108,38 @@ function App() {
       planResult.current.scrollIntoView({behavior:'smooth',block:'start'});
     }
   },[planAnalysis]);
+
+  useEffect(() => {
+    const syncTab = () => { const next = tabFromHash(); if (next) setTab(next); };
+    window.addEventListener('popstate', syncTab);
+    window.addEventListener('hashchange', syncTab);
+    return () => { window.removeEventListener('popstate', syncTab); window.removeEventListener('hashchange', syncTab); };
+  }, []);
+  useEffect(() => {
+    const hash = `#${tab}`;
+    if (window.location.hash !== hash) {
+      if (!window.location.hash) window.history.replaceState(null, '', hash);
+      else window.history.pushState(null, '', hash);
+    }
+    document.title = `${tab === 'overview' ? 'Dashboard projek' : tabLabels[tab]} · FCA`;
+    if (previousTab.current !== tab) {
+      headingRef.current?.focus({ preventScroll: true });
+      window.scrollTo(0, 0);
+      previousTab.current = tab;
+    }
+  }, [tab]);
+  useEffect(() => {
+    if (!projectId || !projects.some(item => item.id === projectId)) return;
+    try { window.localStorage.setItem('fca.activeProject', projectId); } catch { /* Project selection still works without browser storage. */ }
+  }, [projectId, projects]);
+
+  function dashboardNavigate(target, filter) {
+    if (target === 'report') setReportFilter(filter || 'all');
+    setTab(target);
+  }
+  function openDashboardProject(id) {
+    if (chooseProject(id)) setTab('plan');
+  }
 
   async function refreshAiStatus() {
     if (checkingAi || busy) return;
@@ -310,30 +351,26 @@ function App() {
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `FCA-${project.building}-${project.floor}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const Button = ({ children, className = '', disabled = false, ...props }) => <button className={`button ${className}`} disabled={Boolean(busy) || disabled} {...props}>{children}</button>;
-  const navigation = [{ id: 'overview', label: 'Gambaran keseluruhan', icon: Building2 }, { id: 'plan', label: 'Pelan & daftar aset', icon: MapPinned }, { id: 'inspection', label: 'Pemeriksaan', icon: Camera }, { id: 'report', label: 'Laporan', icon: FileText }];
+  const navigation = [{ id: 'overview', label: 'Gambaran keseluruhan', icon: LayoutDashboard }, { id: 'plan', label: 'Pelan & daftar aset', icon: MapPinned }, { id: 'inspection', label: 'Pemeriksaan', icon: Camera }, { id: 'report', label: 'Laporan', icon: FileText }];
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${tab === 'overview' ? 'overview-active' : ''}`}>
+    <a className="skip-link no-print" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Langkau ke kandungan utama</a>
     <aside className="sidebar no-print">
-      <a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('overview'); }}><span className="brand-symbol"><Layers3 size={23}/></span><span>FCA<span className="brand-sub">BUILDING INTELLIGENCE</span></span></a>
-      <div className="workspace-label">RUANG KERJA <span>v0.1</span></div>
-      <div className="project-picker"><Building2 size={18}/><select aria-label="Projek aktif" value={projectId} onChange={e => chooseProject(e.target.value)} disabled={Boolean(busy)}>{!projects.length && <option value="">Tiada projek</option>}{projects.map(p => <option key={p.id} value={p.id}>{p.name} · {p.floor}</option>)}</select><ChevronDown size={14}/></div>
-      <nav>{navigation.map(({ id,label,icon: Icon }) => <button key={id} className={tab === id ? 'nav-item active' : 'nav-item'} onClick={() => setTab(id)} disabled={Boolean(busy)}><Icon size={19}/><span>{label}</span>{id === 'inspection' && records.length > 0 && <span className="nav-count">{records.length}</span>}</button>)}</nav>
+      <a className="brand" href="#" onClick={e => { e.preventDefault(); if (!busy) setTab('overview'); }}><span className="brand-symbol"><Layers3 size={23}/></span><span>FCA<span className="brand-sub">BUILDING INTELLIGENCE</span></span></a>
+      <div className="workspace-label">RUANG KERJA <span>PROJEK ARAS</span></div>
+      <div className="project-picker"><Building2 size={18}/><select aria-label="Projek aktif" value={projectId} onChange={e => chooseProject(e.target.value)} disabled={Boolean(busy)}>{!projects.length && <option value="">Tiada projek</option>}{projects.map(p => <option key={p.id} value={p.id}>{p.name} · {p.building}/{p.floor}</option>)}</select><ChevronDown size={14}/></div>
+      <button className="sidebar-create" aria-label="Daftarkan projek baharu" title="Daftarkan projek baharu" disabled={Boolean(busy)} onClick={openNewProject}><Plus size={16}/><span>Projek baharu</span></button>
+      <nav aria-label="Navigasi utama">{navigation.map(({ id,label,icon: Icon }) => <button key={id} className={tab === id ? 'nav-item active' : 'nav-item'} aria-label={label} title={label} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)} disabled={Boolean(busy)}><Icon size={19}/><span>{label}</span>{id === 'inspection' && records.length > 0 && <span className="nav-count">{records.length}</span>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="ai-sidebar"><span className={`status-dot ${health?.aiEnabled ? 'enabled' : ''}`}/><span>{health?.provider === 'ollama' ? health.aiEnabled ? 'AI tempatan tersedia' : 'Ollama belum bersedia' : health?.aiEnabled ? 'AI dikonfigurasi' : 'Mod pemeriksaan manual'}</span></div><p>Daripada pelan kepada tindakan.<br/>Setiap ruang, setiap pemeriksaan.</p><div className="profile"><span className="avatar">PI</span><div><strong>Pemeriksa bangunan</strong><small>Ruang kerja tempatan</small></div><ShieldCheck size={17}/></div></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar no-print"><div className="breadcrumb">Ruang kerja <ChevronRight size={14}/><strong>{navigation.find(n => n.id === tab)?.label}</strong></div><div className="topbar-right"><select className="mobile-project-select" aria-label="Tukar projek" disabled={Boolean(busy)} value={projectId} onChange={e => chooseProject(e.target.value)}>{!projects.length && <option value="">Tiada projek</option>}{projects.map(p => <option key={p.id} value={p.id}>{p.building} · {p.floor}</option>)}</select><span className="badge subtle">VERSI AWAL</span><span className="topbar-divider"/><span className="avatar small">PI</span></div></header>
-      <main>
+      <header className="topbar no-print"><div className="breadcrumb"><span>Ruang kerja</span><ChevronRight size={14}/><strong>{navigation.find(n => n.id === tab)?.label}</strong></div><div className="topbar-right"><select className="mobile-project-select" aria-label="Tukar projek" disabled={Boolean(busy)} value={projectId} onChange={e => chooseProject(e.target.value)}>{!projects.length && <option value="">Tiada projek</option>}{projects.map(p => <option key={p.id} value={p.id}>{p.building} · {p.floor}</option>)}</select><span className="topbar-project">{project && <><Building2 size={15}/> Blok {project.building} · Aras {project.floor}</>}</span><span className="topbar-ai"><span className={`status-dot ${health?.aiEnabled ? 'enabled' : ''}`}/>{!health ? 'Menyemak AI' : health.aiEnabled ? health.provider === 'ollama' ? 'AI tempatan tersedia' : 'AI tersedia' : 'Mod manual'}</span><span className="topbar-divider"/><span className="avatar small">PI</span></div></header>
+      <main id="main-content" tabIndex={-1}>
         {error && <div role="alert" className="alert error"><span>{error}</span><button aria-label="Tutup mesej" onClick={() => setError('')}><X size={18}/></button></div>}
         {busy && busy !== 'plan-ai' && <div role="status" className="working"><LoaderCircle size={16} className="spin"/> {busy === 'room-ai' ? 'AI sedang menyemak sempadan ruang…' : busy === 'ai' ? 'AI sedang menganalisis imej…' : busy === 'cad' ? 'Fail DWG sedang diproses…' : 'Sedang memproses…'}</div>}
-        <div className="page-heading no-print"><div><div className="eyebrow">PEMERIKSAAN BANGUNAN, LEBIH TERATUR</div><h1>{tab === 'overview' ? 'Setiap ruang ada ceritanya.' : tab === 'plan' ? 'Pelan & daftar aset' : tab === 'inspection' ? 'Pemeriksaan kerosakan' : 'Laporan pemeriksaan'}</h1><p>{tab === 'overview' ? 'Kenali ruang, rekod keadaan dan rancang pembaikan dalam satu aliran kerja.' : tab === 'plan' ? 'Petakan ruang pada pelan lantai dan bina daftar aset anda.' : tab === 'inspection' ? 'Hubungkan bukti foto dengan ruang dan tindakan pembaikan.' : 'Semak rekod, sahkan dapatan dan eksport hasil pemeriksaan.'}</p></div>{tab === 'overview' ? <Button className="primary" onClick={openNewProject}><Plus size={17}/> Projek baharu</Button> : project && <span className="project-tag"><Building2 size={16}/>{project.building} <span>/</span> {project.floor}</span>}</div>
+        <div className="page-heading no-print"><div><div className="eyebrow">{tab === 'overview' ? 'RUANG KERJA PEMERIKSAAN' : 'PEMERIKSAAN BANGUNAN, LEBIH TERATUR'}</div><h1 ref={headingRef} tabIndex={-1}>{tab === 'overview' ? 'Dashboard projek' : tab === 'plan' ? 'Pelan & daftar aset' : tab === 'inspection' ? 'Pemeriksaan kerosakan' : 'Laporan pemeriksaan'}</h1><p>{tab === 'overview' ? 'Ringkasan projek dan tindakan pemeriksaan, di satu tempat.' : tab === 'plan' ? 'Petakan ruang pada pelan lantai dan bina daftar aset anda.' : tab === 'inspection' ? 'Hubungkan bukti foto dengan ruang dan tindakan pembaikan.' : 'Semak rekod, sahkan dapatan dan eksport hasil pemeriksaan.'}</p></div>{tab === 'overview' ? <Button className="primary" onClick={openNewProject}><Plus size={17}/> Projek baharu</Button> : project && <span className="project-tag"><Building2 size={16}/>{project.building} <span>/</span> {project.floor}</span>}</div>
 
-        {tab === 'overview' && <>
-          <section className="hero"><div className="hero-copy"><span className="hero-kicker"><span className="tiny-line"/> DARIPADA PELAN KE PEMBAIKAN</span><h2>Pemeriksaan yang jelas.<br/><em>Keputusan yang lebih baik.</em></h2><p>Satukan pelan lantai, nombor aset dan bukti kerosakan. Bina rekod bangunan yang mudah dirujuk, ruang demi ruang.</p><Button className="cream" onClick={() => project ? setTab('plan') : openNewProject()}>{project ? 'Buka pelan lantai' : 'Mulakan projek pertama'}<ArrowRight size={17}/></Button><div className="hero-foot"><ShieldCheck size={15}/> Dapatan AI disemak oleh pemeriksa</div></div><div className="hero-visual" aria-hidden="true"><div className="drawing-grid"/><div className="plan-drawing"><div className="drawing-room dr1">RUANG 01<span>B01 · L01</span></div><div className="drawing-room dr2">RUANG 02</div><div className="drawing-room dr3">RUANG 03</div><div className="drawing-room dr4">RUANG 04</div><div className="drawing-room dr5">LOBI</div><div className="drawing-room dr6">RUANG 05</div><div className="drawing-scan"/></div><div className="drawing-label"><span className="status-dot enabled"/> PELAN → ASET → PEMERIKSAAN</div><span className="drawing-north">N ↑</span></div></section>
-          <div className="stats-grid">{[{ label: 'Projek aras', value: projects.length, icon: Building2, note: 'Bangunan & aras didaftarkan' }, { label: 'Ruang berdaftar', value: rooms.length, icon: MapPinned, note: project ? `${reviewedRooms} ruang telah disemak` : 'Mula dengan pelan lantai' }, { label: 'Rekod pemeriksaan', value: records.length, icon: ClipboardCheck, note: 'Bukti foto & dapatan kerosakan' }, { label: 'Disahkan pemeriksa', value: records.filter(i => i.reviewed).length, icon: CheckCheck, note: 'Sedia untuk rujukan laporan' }].map(({label,value,icon: Icon,note}) => <div className="stat-card" key={label}><div className="stat-top"><span>{label}</span><Icon size={19}/></div><strong>{value.toString().padStart(2,'0')}</strong><small>{note}</small></div>)}</div>
-          <div className="section-title"><div><h2>Aliran kerja anda</h2><p>Tiga langkah untuk rekod pemeriksaan yang lengkap.</p></div><span className="text-muted">MULA DI SINI</span></div>
-          <div className="workflow-grid">{[{ number: '01', icon: FileImage, title: 'Petakan pelan lantai', text: 'Muat naik DWG, PDF atau gambar. Kenal pasti ruang dengan AI atau tandakan secara manual.', target: 'plan', action: 'Urus pelan' }, { number: '02', icon: ScanLine, title: 'Rekod & analisis kerosakan', text: 'Ambil foto di tapak. Semak jenis kerosakan, deskripsi dan cadangan pembaikan.', target: 'inspection', action: 'Buat pemeriksaan' }, { number: '03', icon: FileText, title: 'Semak & hasilkan laporan', text: 'Sahkan dapatan pemeriksaan. Eksport daftar atau cetak laporan bersama bukti foto.', target: 'report', action: 'Lihat laporan' }].map(({number,icon: Icon,title,text,target,action}) => <button className="workflow-card" key={number} onClick={() => project ? setTab(target) : openNewProject()}><div className="workflow-top"><span className="icon-tile"><Icon size={22}/></span><span className="step-number">{number}</span></div><h3>{title}</h3><p>{text}</p><span className="card-link">{action}<ArrowRight size={15}/></span></button>)}</div>
-          <div className="overview-bottom"><div className="panel recent-panel"><div className="panel-heading"><h2>Pemeriksaan terkini</h2><button className="text-button" onClick={() => setTab('report')}>Lihat semua <ArrowRight size={14}/></button></div>{records.length ? records.slice(0,3).map(i => <button className="record-row" key={i.id} onClick={() => selectInspection(i)}><img src={`/uploads/${i.photoId}.png`} alt="Foto kerosakan"/><div><strong>{i.damageType}</strong><small>{roomCode(rooms.find(r => r.id === i.roomId))} · {date(i.createdAt)}</small></div><span className={`badge ${severityClass(i.severity)}`}>{i.severity}</span><ChevronRight size={17}/></button>) : <div className="empty-inline"><ClipboardCheck size={29}/><div><strong>Belum ada rekod pemeriksaan</strong><p>Rekod pertama anda akan dipaparkan di sini.</p></div></div>}</div><div className="tip-card"><span className="tip-label"><CircleHelp size={17}/> NOTA PEMERIKSA</span><h3>Bukti yang baik,<br/>dapatan yang lebih tepat.</h3><p>Ambil satu foto keseluruhan dan satu foto dekat. Pastikan pencahayaan mencukupi serta kerosakan kelihatan jelas.</p></div></div>
-        </>}
+        {tab === 'overview' && <Dashboard projects={projects} project={project} disabled={Boolean(busy)} onNewProject={openNewProject} onNavigate={dashboardNavigate} onOpenProject={openDashboardProject} onSelectInspection={selectInspection}/>}
 
         {!project && tab !== 'overview' && <div className="panel big-empty"><FolderOpen size={42}/><h2>Cipta projek untuk bermula</h2><p>Daftarkan bangunan dan aras sebelum memuat naik pelan atau pemeriksaan.</p><Button className="primary" onClick={openNewProject}><Plus size={17}/> Projek baharu</Button></div>}
 

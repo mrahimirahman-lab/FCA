@@ -35,6 +35,10 @@ API dan binaan web dilayan pada port 3001, terikat kepada `127.0.0.1`. Semak kes
 
 ## Aliran kerja
 
+**Dashboard projek:** ringkasan ruang, pemeriksaan, draf dan pengesahan merujuk projek aktif yang dinyatakan pada paparan. Klik kad statistik untuk membuka daftar ruang atau laporan dengan penapis sepadan. Senarai **Projek anda** merangkumi semua projek dan boleh dicari mengikut nama, blok atau aras; klik satu projek untuk membuka pelannya. Bahagian pemeriksaan terkini memaparkan rekod projek aktif dan boleh dibuka untuk semakan.
+
+Navigasi menyokong Back/Forward pelayar dan pautan halaman `#overview`, `#plan`, `#inspection` serta `#report`. Projek aktif terakhir disimpan dalam pelayar supaya kekal selepas refresh; jika projek itu tiada, aplikasi menggunakan projek pertama yang tersedia. Pada tablet dan telefon, gunakan pemilih projek dalam bar atas. Navigasi bawah telefon, label halaman aktif dan pautan langkau kandungan menyokong penggunaan sentuhan serta papan kekunci.
+
 1. Cipta projek untuk satu bangunan dan aras. Pasangan kod bangunan–aras mestilah unik.
 2. Muat naik DWG, PDF atau imej. DWG dibaca secara tempatan sebagai paparan 2D Model Space; semak hasil penukaran sebelum menanda ruang. Bagi PDF, pilih halaman yang mewakili aras tersebut **sebelum** menambah ruang. Satu projek menggunakan satu paparan pelan; cipta projek aras lain untuk halaman atau pelan lain.
 3. Tambah ruang dengan klik pada pelan, atau analisis dengan AI dan import cadangan. Pilih ruang, seret kotak untuk mengalihkannya atau pemegang penjuru/tepi untuk mengubah saiz. Isi nama, panjang/lebar dalam meter, material dinding/lantai/siling dan pengesahan ruang, kemudian klik **Simpan**. Keluasan m² dikira daripada panjang × lebar. Koordinat peratus tersedia melalui **Kedudukan kotak (lanjutan)**.

@@ -15,7 +15,7 @@ function examplePdf() {
 test('PDF page selection, DAK assignment, phone layout, inspection review and export', async ({ page }, testInfo) => {
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading',{name:'Setiap ruang ada ceritanya.'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Dashboard projek'})).toBeVisible();
   await page.screenshot({path:testInfo.outputPath('overview.png'),fullPage:true});
   await page.getByRole('button',{name:'Projek baharu',exact:true}).click();
   await page.getByLabel('Nama projek').fill('Pemeriksaan Blok Pentadbiran');
