@@ -17,7 +17,7 @@ $elementOutput = Join-Path (Join-Path $env:USERPROFILE 'Downloads') ('CubiCasa-e
 New-Item -ItemType Directory -Path $elementHelper | Out-Null
 $elementFiles = @{
     'prepare.py' = @{ Source = 'plan-elements/prepare.py'; Hash = '0d2cc1877cb435afde8da1106c31501e3f42259da873dfcd11b9ca905b90b390' }
-    'review.html' = @{ Source = 'plan-elements/review.html'; Hash = '0b80a9e6eebeae5c8913657528fc0fa1e5deaba27888c5b4067c3439c913d012' }
+    'review.html' = @{ Source = 'plan-elements/review.html'; Hash = 'b8d014de473bf40514b0c92cb8454dd6c8e44c2f26cbe9f9364011e9f6659c3a' }
     'prompt-ms.txt' = @{ Source = 'plan-elements/prompt-ms.txt'; Hash = 'd7309735aa5fa4d7062c97493416a5327c7aa086162e1eead65cc04cb460aaeb' }
     'cubi_geometry.py' = @{ Source = 'cubicasa/prepare.py'; Hash = '0d5ffc5b35cf7c230d3a6c43cfffc6e4048a64e687222f8d8bff42a77036cc0e' }
 }

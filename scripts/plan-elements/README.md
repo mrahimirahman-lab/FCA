@@ -43,3 +43,27 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python -m unittest discover -s scripts/pl
 ```
 
 Checks cover raw-pixel frames despite differing SVG dimensions, inherited transforms, repeated SVG IDs, direct polygons rather than nested glass duplication, explicit host-wall relations, door opening versus swing-arc extent, invalid source geometry, reviewed embedded Parquet, split/changed-image rejection, dense-task handling and bootstrap hashes. They do not test actual model training.
+
+## Larger batch after the six-image review
+
+`start-batch.ps1 -ReleaseRef <pinned commit>` runs the CPU-only batch generator. It asks for the saved individual review JSON, finds its exact matching `manifest-elemen.json` among local Downloads audit folders (or prompts for it), asks for the **previous room batch's `dataset/manifest-eksport.json`**, and asks for the full original CubiCasa SVG/PNG source folder. These files/images remain local. It downloads only pinned, SHA-256-checked generic helpers. It does not load model weights or start training.
+
+```sh
+python scripts/plan-elements/batch.py /path/to/source /path/to/previous-room-batch \
+  /path/to/manifest-elemen.json /path/to/semakan-elemen.json /path/to/new-element-batch
+```
+
+The review/manifest/prompt hashes must match; calibration geometry is rechecked. The prior room audit/export hash relationship, all full-drawing split memberships, duplicate source hashes and image counts are validated. Source directory names only identify *candidate* files: both the actual SVG SHA-256 and decoded PNG RGB hash/canvas must match the **previous audit** before source geometry is reused. A changed source or missing image is fatal and cannot silently become a quality exclusion. This allows different directory roots without inferring split membership from a numeric basename.
+
+The batch uses a **subset of the existing train/validation/test split**, preserving every retained image's original assignment. It does not fill a small validation/test set with training images. This is not the official CubiCasa benchmark, and the reused test set is already examined. Geometry failures are logged; drawings must have all three supported classes with 1–32 instances per class and no geometry quality flags. Dense tasks are excluded as complete drawings for this initial pilot, not truncated. This deliberately selects relatively compact three-class drawings; it does not establish performance on complex or class-absent plans. At least **30 train, 5 validation and 5 test drawings** must remain, otherwise the source audit/provenance is retained and **no training Parquet** is produced.
+
+Each retained drawing creates exactly three positive queries, one per element class. `dataset/` contains `Elemen-train.parquet`, `Elemen-validation.parquet`, `Elemen-test.parquet`, `manifest-eksport-elemen.json`, license and an initial `Elemen-config.yaml`. `audit/` provides a class-filtered review with split labels and a disclosure that the batch used automated screening after individually reviewed calibration. Only source images whose hashes match the reviewed calibration are counted as individually reviewed; the entire batch is **not** described as manually approved. `provenans-batch.json` records root mapping and excluded drawings. The six calibration reviews establish a checked conversion sample, not that all additional annotations are perfect.
+
+The initial **FCA-ELEMEN-01** profile starts from the original Qwen3-VL-2B-Instruct, QLoRA, frozen vision layers, context 4096, image size 768, LR 2e-5, rank 8/alpha 16, microbatch 1/accumulation 4 and `ceil(training_rows/4)` optimizer steps, with Eval Steps 0.5. It must be loaded after selecting the new training and validation files. The test file is reserved for later evaluation. This is a resource-conscious trial profile, **not a verified maximum processor length or VRAM-fit guarantee**. Check full target preservation in the user's Unsloth processor/data preview before starting; no training execution or improvement is claimed.
+
+```sh
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python -m unittest discover -s scripts/plan-elements -p 'test_*.py'
+ELEMENTS_TEST_PYTHON=python3 node --test scripts/plan-elements/test_review.mjs
+```
+
+Additional synthetic checks cover verified source mapping across directory roots, exact split preservation, calibration provenance, full-class task balance, altered source/stale review rejection, dense-drawing exclusions, minimum-data failure without Parquet, profile generation and offline review/download behavior. No user data is included in these tests.
