@@ -6,6 +6,10 @@ from pathlib import Path
 from PIL import Image
 import prepare
 import evaluate
+import importlib.util
+repair_spec=importlib.util.spec_from_file_location("repair_eval",Path(__file__).with_name("repair-evaluator.py"))
+repair_eval=importlib.util.module_from_spec(repair_spec)
+repair_spec.loader.exec_module(repair_eval)
 
 class EvaluationTests(unittest.TestCase):
     def setUp(self):
@@ -49,6 +53,25 @@ class EvaluationTests(unittest.TestCase):
         Image.new('RGB',(s['width'],s['height']),'red').save(self.batch/'audit'/s['file'])
         with self.assertRaisesRegex(ValueError,'Piksel'):evaluate.build(self.batch,self.root/'bad')
         self.assertFalse((self.root/'bad').exists())
+    def test_repair_preserves_payload_and_creates_exact_backup(self):
+        payload=evaluate.build(self.batch,self.root/'out')
+        page=self.root/'out'/'BUKA-UJIAN-CUBICASA.html'
+        before=page.read_bytes()
+        backup=repair_eval.repair(page)
+        self.assertEqual(backup.read_bytes(),before)
+        text=page.read_text()
+        decoded,_=json.JSONDecoder().raw_decode(text.split('const data=',1)[1])
+        self.assertEqual(decoded,payload)
+        self.assertIn('id="compare-status"',text)
+        page.write_text('not an evaluation page')
+        with self.assertRaisesRegex(ValueError,'bukan halaman'):repair_eval.repair(page)
+        self.assertEqual(page.read_text(),'not an evaluation page')
+
+    def test_repair_bootstrap_hashes(self):
+        root=Path(__file__).parent;text=(root/'start-repair.ps1').read_text()
+        for name in ['repair-evaluator.py','evaluator.html','score.js']:
+            self.assertIn("'"+name+"' = '"+prepare.sha((root/name).read_bytes())+"'",text)
+
     def test_eval_bootstrap_hashes(self):
         root=Path(__file__).parent;text=(root/'start-evaluation.ps1').read_text()
         for name in ['evaluate.py','prepare.py','evaluator.html','score.js']:

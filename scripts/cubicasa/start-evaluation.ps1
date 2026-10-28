@@ -23,7 +23,7 @@ $cubiEvalBase = "https://raw.githubusercontent.com/mrahimirahman-lab/FCA/$Releas
 $cubiEvalFiles = @{
     'evaluate.py' = 'd5c4e0c475bccea7bb7ba89ba1488e1151f4fdf11cc9cea7ca42561562937bcf'
     'prepare.py' = '0d5ffc5b35cf7c230d3a6c43cfffc6e4048a64e687222f8d8bff42a77036cc0e'
-    'evaluator.html' = '5d620a4498cf278be6bdd3ddae61a4c10062139b91426cb6e53c577ab57af6b1'
+    'evaluator.html' = '706b557298b282d02d936278c981445d3447f02aeb77dcb5423144026bd563cb'
     'score.js' = 'b74db1941b34bcf0c60744e2c6e2a5e426d41f07f6191b603e292c5af2c0c2b1'
 }
 foreach ($cubiEvalName in $cubiEvalFiles.Keys) {

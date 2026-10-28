@@ -38,11 +38,12 @@ evaluate.build(batch,root/'out')
   await page.locator('#image').evaluate(im=>im.decode());
   const payload=await page.evaluate(()=>data);
   assert.equal(payload.cases.length,2);assert.match(await page.locator('#progress').innerText(),/0 \/ 2/);
+  await page.locator('#compare').click();assert.match(await page.locator('#compare-status').innerText(),/BASE MODEL masih kosong/);assert.equal(await page.locator('#compare-status').getAttribute('data-error'),'true');assert.equal(await page.evaluate(()=>document.activeElement.id),'base');
   const expected=JSON.stringify(payload.cases[0].expected);
   await page.locator('#base').fill(expected);await page.locator('#tuned').fill(expected);
-  await page.locator('#compare').click();assert.match(await page.locator('#notice').innerText(),/Sahkan/);
+  await page.locator('#compare').click();assert.match(await page.locator('#notice').innerText(),/Sahkan/);assert.match(await page.locator('#compare-status').innerText(),/kotak pengesahan/);assert.equal(await page.evaluate(()=>document.activeElement.id),'confirmed');
   await page.locator('#confirmed').check();await page.locator('#compare').click();
-  assert.match(await page.locator('#progress').innerText(),/1 \/ 2/);assert.match(await page.locator('#result').innerText(),/100.0%/);
+  assert.match(await page.locator('#progress').innerText(),/1 \/ 2/);assert.match(await page.locator('#result').innerText(),/100.0%/);assert.match(await page.locator('#compare-status').innerText(),/berjaya disimpan/);
   const downloadWait=page.waitForEvent('download');await page.locator('#png').click();const png=await downloadWait;
   assert.equal(png.suggestedFilename(),'CubiCasa-test-a.png');
   const pngBytes=await readFile(await png.path());assert.deepEqual(pngBytes,await readFile(join(dir,'out',payload.cases[0].file)));
@@ -53,7 +54,7 @@ evaluate.build(batch,root/'out')
   // Persisted drafts/scores survive a page refresh.
   await page.reload();assert.match(await page.locator('#progress').innerText(),/1 \/ 2/);
   await page.locator('#base').fill('broken JSON');assert.match(await page.locator('#progress').innerText(),/0 \/ 2/);
-  await page.locator('#confirmed').check();await page.locator('#compare').click();assert.match(await page.locator('#progress').innerText(),/0 \/ 2/);
+  await page.locator('#confirmed').check();await page.locator('#compare').click();assert.match(await page.locator('#progress').innerText(),/0 \/ 2/);assert.match(await page.locator('#compare-status').innerText(),/BASE MODEL: jawapan JSON tidak sah/);
   // Imported scores are recomputed. An attacker-provided perfect cached score is ignored.
   report.results[0].models.base.mean_iou=-100;
   page.on('dialog',d=>d.accept());

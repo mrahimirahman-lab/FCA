@@ -102,3 +102,5 @@ Browser integration (Playwright/Chromium and Python/Pillow required; synthetic d
 ```sh
 CUBICASA_TEST_PYTHON=python3 node --test scripts/cubicasa/test_evaluator.mjs
 ```
+
+If comparison appears to do nothing, errors and success messages now appear directly below the compare button, with the offending input focused. Both answer fields must contain complete JSON, and the input confirmation must be ticked **after** the last answer/settings edit. Empty BASE/tuned fields and malformed JSON are identified by panel name. A new `start-repair.ps1 -ReleaseRef <commit>` prompts for an existing generated `BUKA-UJIAN-CUBICASA.html`, hash-checks the repair/template/scorer, and updates the UI in place with an exact original-file backup. The embedded payload and benchmark fingerprint remain unchanged. Refresh the **original browser tab** afterwards; do not open the backup as the working page. Keeping the same file location avoids deliberately changing the browser's storage location. Exported result JSON remains compatible. Browser storage availability itself is still controlled by the browser.
