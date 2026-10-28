@@ -1,0 +1,6 @@
+__pycache__/
+*.parquet
+manifest-elemen.json
+semakan-elemen.json
+manifest-eksport-elemen.json
+BUKA-SEMAKAN-ELEMEN.html
