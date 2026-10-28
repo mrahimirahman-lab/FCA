@@ -88,5 +88,16 @@
       precision_at_05: returned ? hits / returned : 0, recall_at_05: hits / expected,
       false_positives_at_05: returned - hits, false_negatives_at_05: expected - hits };
   }
-  root.CubiScore = { parse, iou, assign, score, aggregate };
+  function inspect(text, gt) {
+    if (typeof text !== 'string' || !text.trim() || text.length > 1000000) {
+      throw Error('Tampal jawapan asal lengkap (maksimum satu juta aksara); ruangan kosong belum dianggap cubaan model.');
+    }
+    try {
+      const predictions = parse(text);
+      return { status: 'valid', raw_response: text, predictions, metrics: score(predictions, gt) };
+    } catch (e) {
+      return { status: 'invalid_output', raw_response: text, error: e.message, predictions: null, metrics: null };
+    }
+  }
+  root.CubiScore = { parse, iou, assign, score, aggregate, inspect };
 })(globalThis);

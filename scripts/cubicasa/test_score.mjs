@@ -34,3 +34,12 @@ test('aggregate distinguishes mean per image from pooled per reference',()=>{
  const r=S.aggregate([{models:{base:one}},{models:{base:perfect}}],'base');
  assert.equal(r.mean_iou_per_image,.5);assert.equal(r.mean_iou_per_reference,.75);assert.equal(S.aggregate([],'base'),null);
 });
+test('invalid geometry is preserved as output failure, never silently repaired or scored as empty',()=>{
+ const gt=[room('A',[0,0,100,100])];
+ const raw=JSON.stringify([room('A',[10,900,300,900])]);
+ const r=S.inspect(raw,gt);
+ assert.equal(r.status,'invalid_output');assert.equal(r.raw_response,raw);
+ assert.equal(r.metrics,null);assert.equal(r.predictions,null);assert.match(r.error,/Objek 1/);
+ const empty=S.inspect('[]',gt);assert.equal(empty.status,'valid');assert.equal(empty.metrics.mean_iou,0);
+ assert.throws(()=>S.inspect('',gt));
+});

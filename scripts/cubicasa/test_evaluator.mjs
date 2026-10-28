@@ -66,6 +66,30 @@ evaluate.build(batch,root/'out')
   await page.locator('#next').click();assert.equal(await page.locator('#case').inputValue(),'test-b');assert.equal(await page.locator('#base').inputValue(),'');
   await page.locator('#base').fill('[]');await page.locator('#tuned').fill('[]');await page.locator('#confirmed').check();await page.locator('#compare').click();
   assert.match(await page.locator('#progress').innerText(),/2 \/ 2/);
+  // Failed outputs retain the original response and are distinct from a valid empty prediction.
+  const invalidRaw='[{"label":"A","bbox_2d":[20,900,300,900]}]';
+  await page.locator('#base').fill(invalidRaw);await page.locator('#confirmed').check();
+  await page.locator('#compare').click();assert.match(await page.locator('#compare-status').innerText(),/BASE MODEL/);
+  await page.locator('#record-failure').click();
+  assert.match(await page.locator('#result').innerText(),/GAGAL OUTPUT/);
+  assert.match(await page.locator('#progress').innerText(),/2 \/ 2 pelan sudah diuji/);
+  const failureWait=page.waitForEvent('download');await page.locator('#export').click();
+  const failedExport=await failureWait, failed=JSON.parse(await readFile(await failedExport.path(),'utf8'));
+  assert.equal(failed.attempted_images,2);assert.equal(failed.all_images_attempted,true);
+  assert.equal(failed.completed_images,1);assert.equal(failed.complete,false);
+  assert.equal(failed.failed_images,1);assert.deepEqual(failed.unattempted_ids,[]);
+  assert.equal(failed.output_validity.base.invalid_rate,.5);assert.equal(failed.output_validity.tuned.invalid,0);
+  assert.equal(failed.failures[0].models.base.raw_response,invalidRaw);
+  assert.equal(failed.failures[0].models.base.metrics,null);
+  assert.equal(failed.summary.base.images,1);
+  await page.reload();assert.match(await page.locator('#progress').innerText(),/2 \/ 2 pelan sudah diuji/);
+  await page.locator('#case').selectOption('test-b');assert.equal(await page.locator('#base').inputValue(),invalidRaw);
+  await page.locator('#importfile').setInputFiles({name:'failed-results.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(failed))});
+  assert.match(await page.locator('#progress').innerText(),/2 \/ 2 pelan sudah diuji/);
+  await page.locator('#case').selectOption('test-b');assert.match(await page.locator('#result').innerText(),/GAGAL OUTPUT/);
+  await page.locator('#base').fill('[]');await page.locator('#confirmed').check();
+  await page.locator('#record-failure').click();assert.match(await page.locator('#compare-status').innerText(),/Kedua-dua jawapan sah/);
+  await page.locator('#compare').click();assert.match(await page.locator('#progress').innerText(),/2 \/ 2 pelan selesai/);
   await page.setViewportSize({width:375,height:812});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   assert.deepEqual(errors,[]);assert.deepEqual(network,[]);
  }finally{if(browser)await browser.close();if(server)await new Promise(resolve=>server.close(resolve));await rm(dir,{recursive:true,force:true})}

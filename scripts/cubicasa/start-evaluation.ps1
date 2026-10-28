@@ -21,10 +21,10 @@ $cubiEvalHelper = Join-Path ([IO.Path]::GetTempPath()) ('CubiCasa-eval-helper-' 
 New-Item -ItemType Directory -Path $cubiEvalHelper | Out-Null
 $cubiEvalBase = "https://raw.githubusercontent.com/mrahimirahman-lab/FCA/$ReleaseRef/scripts/cubicasa"
 $cubiEvalFiles = @{
-    'evaluate.py' = 'd5c4e0c475bccea7bb7ba89ba1488e1151f4fdf11cc9cea7ca42561562937bcf'
+    'evaluate.py' = '8d1ff7a0a0e793f3688182994fc53e1274a34cbb962972ffe43b15bbce6c2259'
     'prepare.py' = '0d5ffc5b35cf7c230d3a6c43cfffc6e4048a64e687222f8d8bff42a77036cc0e'
-    'evaluator.html' = '706b557298b282d02d936278c981445d3447f02aeb77dcb5423144026bd563cb'
-    'score.js' = 'b74db1941b34bcf0c60744e2c6e2a5e426d41f07f6191b603e292c5af2c0c2b1'
+    'evaluator.html' = 'dbbc2bd85f120a1831fd331c043c6d33ebf765a8230dd5f426f2baf54f8330d5'
+    'score.js' = '829661098f5d336932ab7c708c76466f2a2ef4b1021ff1cc3584aaf45d36b4be'
 }
 foreach ($cubiEvalName in $cubiEvalFiles.Keys) {
     $cubiEvalPath = Join-Path $cubiEvalHelper $cubiEvalName

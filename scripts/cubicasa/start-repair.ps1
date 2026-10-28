@@ -17,8 +17,8 @@ New-Item -ItemType Directory -Path $cubiFixHelper | Out-Null
 $cubiFixBase = "https://raw.githubusercontent.com/mrahimirahman-lab/FCA/$ReleaseRef/scripts/cubicasa"
 $cubiFixFiles = @{
     'repair-evaluator.py' = 'a474ac39c786b281b0c3600760e973c9a8e5c1f81275b9e9dd83ab2e0d4f80de'
-    'evaluator.html' = '706b557298b282d02d936278c981445d3447f02aeb77dcb5423144026bd563cb'
-    'score.js' = 'b74db1941b34bcf0c60744e2c6e2a5e426d41f07f6191b603e292c5af2c0c2b1'
+    'evaluator.html' = 'dbbc2bd85f120a1831fd331c043c6d33ebf765a8230dd5f426f2baf54f8330d5'
+    'score.js' = '829661098f5d336932ab7c708c76466f2a2ef4b1021ff1cc3584aaf45d36b4be'
 }
 foreach ($cubiFixName in $cubiFixFiles.Keys) {
     $cubiFixPath = Join-Path $cubiFixHelper $cubiFixName
