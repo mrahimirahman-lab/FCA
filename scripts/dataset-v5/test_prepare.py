@@ -115,10 +115,87 @@ class V5Tests(unittest.TestCase):
     def test_bootstrap_download_hashes_match_reviewed_helpers(self):
         root = Path(__file__).parent
         bootstrap = (root / "start.ps1").read_text()
-        for filename in ["prepare.py", "evaluator.html"]:
+        for filename in ["prepare.py", "evaluator.html", "review.html"]:
             digest = hashlib.sha256((root / filename).read_bytes()).hexdigest()
             self.assertIn("'" + filename + "' = '" + digest + "'", bootstrap)
         self.assertIn("$ReleaseRef/scripts/dataset-v5", bootstrap)
+
+    def patch_file(self, edits, filename="corrections.json"):
+        path = Path(self.temp.name) / filename
+        patch = {"schema_version": 1, "units": "relative_0_1000",
+                 "source_manifest_sha256": hashlib.sha256((self.source / "manifest-V4.json").read_bytes()).hexdigest(),
+                 "edits": edits}
+        path.write_text(json.dumps(patch))
+        return path
+
+    def edit(self, name, index, after):
+        source = prepare.read_sources(self.source)[name]
+        room = source["rooms"][index]
+        return {"image_id": name, "image_sha256": source["sha256"],
+                "room_index": index, "label": room["label"],
+                "before": room["bbox_2d"], "after": after, "reviewed": True}
+
+    def test_corrections_update_single_multi_pair_and_margin_without_modifying_inputs(self):
+        edits = [self.edit("JKR70-D", 4, [530, 70, 710, 230]),
+                 self.edit("JKR70-D", 5, [740, 70, 970, 230])]
+        patch = self.patch_file(edits)
+        before = (self.source / "manifest-V4.json").read_bytes()
+        output = Path(self.temp.name) / "corrected"
+        prepare.build(self.source, output, patch)
+        m = json.loads((output / "manifest-V5.json").read_text())
+        self.assertEqual((self.source / "manifest-V4.json").read_bytes(), before)
+        self.assertEqual(m["reference_status"], "partially_user_corrected_from_V4")
+        self.assertTrue(m["evaluation"]["unchanged_from_V4"])
+        self.assertEqual(m["corrections"]["affected_images"], ["JKR70-D"])
+        for name, meta in m["images"].items():
+            if meta["source_image_id"] != "JKR70-D":
+                continue
+            for case in [c for c in m["cases"] if c["image_id"] == name]:
+                for target in case["expected"]:
+                    edit = next((e for e in edits if e["label"] == target["label"]), None)
+                    if edit:
+                        expected = edit["after"] if meta["variant"] == "original" else prepare.translated_box(
+                            edit["after"], (374, 632), meta["padding_pixels_ltrb"])
+                        self.assertEqual(target["bbox_2d"], expected)
+            self.assertNotEqual(meta["reference_sha256"], self.manifest["images"][name]["reference_sha256"])
+        ds = load_dataset("parquet", data_files=str(output / "V5-latihan-90.parquet"), split="train")
+        answers = [json.loads(row["conversations"][1]["value"]) for row in ds]
+        self.assertTrue(any(answer == [{"label": "TANDAS", "bbox_2d": edits[0]["after"]}] for answer in answers))
+        self.assertEqual((output / "pembetulan-digunakan.json").read_bytes(), patch.read_bytes())
+
+    def test_rejects_stale_unreviewed_duplicate_or_wrong_correction_before_writing(self):
+        good = self.edit("JKR70-D", 4, [530, 70, 710, 230])
+        bads = []
+        for field, value in [("reviewed", False), ("before", [0, 0, 1, 1]),
+                             ("label", "OTHER"), ("image_sha256", "wrong"),
+                             ("room_index", True), ("after", [0, 0, 1001, 10])]:
+            bad = copy.deepcopy(good)
+            bad[field] = value
+            bads.append([bad])
+        bads.append([good, good])
+        for edits in bads:
+            patch = self.patch_file(edits)
+            output = Path(self.temp.name) / "must-not-exist"
+            with self.assertRaises(ValueError):
+                prepare.build(self.source, output, patch)
+            self.assertFalse(output.exists())
+        patch = self.patch_file([good])
+        value = json.loads(patch.read_text())
+        value["source_manifest_sha256"] = "wrong"
+        patch.write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, "manifest"):
+            prepare.apply_corrections(prepare.read_sources(self.source), self.source, patch)
+
+    def test_same_name_kitchen_correction_updates_query_and_marks_changed_eval_reference(self):
+        patch = self.patch_file([self.edit("MANTIN", 3, [100, 800, 300, 950])], "mantin-correction.json")
+        output = Path(self.temp.name) / "mantin-corrected"
+        prepare.build(self.source, output, patch)
+        m = json.loads((output / "manifest-V5.json").read_text())
+        self.assertFalse(m["evaluation"]["unchanged_from_V4"])
+        case = next(c for c in m["cases"] if c["id"] == "MANTIN-4")
+        self.assertIn("bawah-kiri", case["prompt"])
+        self.assertEqual(case["expected"][0]["bbox_2d"], [100, 800, 300, 950])
+        self.assertIn("skor lama tidak boleh dibandingkan terus", (output / "BACA-DAHULU.txt").read_text())
 
     def test_refuses_overwrite_and_invalid_bounds(self):
         before = (self.output / "manifest-V5.json").read_bytes()

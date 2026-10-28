@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-f0-9]{40}$')]
-    [string]$ReleaseRef
+    [string]$ReleaseRef,
+    [switch]$UseCorrections,
+    [switch]$ReviewReferences
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,13 +31,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $datasetSource 'manifest-V4.json') -
 }
 
 $datasetStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$datasetOutput = Join-Path $datasetDownloads ('FCA-V5-' + $datasetStamp)
+$datasetPrefix = if ($UseCorrections -or $ReviewReferences) { 'FCA-V5-R1-' } else { 'FCA-V5-' }
+$datasetOutput = Join-Path $datasetDownloads ($datasetPrefix + $datasetStamp)
 $datasetHelper = Join-Path ([IO.Path]::GetTempPath()) ('FCA-V5-helper-' + $datasetStamp)
 New-Item -ItemType Directory -Path $datasetHelper | Out-Null
 $datasetBase = "https://raw.githubusercontent.com/mrahimirahman-lab/FCA/$ReleaseRef/scripts/dataset-v5"
 $datasetFiles = @{
-    'prepare.py' = 'd9bdfdf15cb69a37669c06f41a498f9c6ebbe1dfa0483877c4cc675fc4d75ec9'
-    'evaluator.html' = '17fd20e980e627d2d5b16f77f88d4991bdff5cdf44850d695e2103e25ecaeaf7'
+    'review.html' = '6720e6c1c8296a9d5d086fe1a3f841bd41efcdea8c2a709e368a03dae32b6dc0'
+    'prepare.py' = '69b78f24ded4f628f4f5cddc83e2b7917959bbb61247be52efbcb995c1b14e76'
+    'evaluator.html' = 'a16b6cfc5f9d38467bf33cd4818f5d2e57a00d5eeb763bf95d350177c5ee0570'
 }
 foreach ($datasetName in $datasetFiles.Keys) {
     $datasetPath = Join-Path $datasetHelper $datasetName
@@ -46,7 +50,25 @@ foreach ($datasetName in $datasetFiles.Keys) {
     }
 }
 
-& $datasetPython (Join-Path $datasetHelper 'prepare.py') $datasetSource $datasetOutput
+if ($ReviewReferences) {
+    Start-Process explorer.exe -ArgumentList ('"' + $datasetSource + '"')
+    Start-Process (Join-Path $datasetHelper 'review.html')
+    Write-Host 'Dalam editor: pilih manifest-V4.json dan PNG asal, lukis semula kotak, sahkan dan simpan pembetulan JSON.'
+    Read-Host 'Selepas fail pembetulan disimpan, kembali ke sini dan tekan Enter' | Out-Null
+}
+$datasetArguments = @((Join-Path $datasetHelper 'prepare.py'), $datasetSource, $datasetOutput)
+if ($UseCorrections -or $ReviewReferences) {
+    $datasetCorrectionPicker = New-Object System.Windows.Forms.OpenFileDialog
+    $datasetCorrectionPicker.Filter = 'Pembetulan JSON (*.json)|*.json'
+    $datasetCorrectionPicker.Title = 'Pilih pembetulan-ruang-V5.json yang baru disimpan'
+    $datasetCorrectionPicker.InitialDirectory = $datasetDownloads
+    if ($datasetCorrectionPicker.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+        Write-Host 'Dibatalkan. Tiada dataset latihan baharu dijana.'
+        return
+    }
+    $datasetArguments += @('--corrections', $datasetCorrectionPicker.FileName)
+}
+& $datasetPython @datasetArguments
 if ($LASTEXITCODE -ne 0) { throw 'Dataset V5 belum berjaya dijana. Semak mesej ralat di atas.' }
 Write-Host 'Dataset V5 disediakan. Latihan perlu dimulakan dalam Unsloth Studio.'
 Start-Process explorer.exe -ArgumentList ('"' + $datasetOutput + '"')

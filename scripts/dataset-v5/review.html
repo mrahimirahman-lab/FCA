@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ms"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baiki rujukan ruang FCA</title>
+<style>
+*{box-sizing:border-box}body{font:16px system-ui;margin:0;background:#f4f6ef;color:#203b2c}header{padding:18px;background:white}h1{font-size:23px;margin:0 0 12px}p{line-height:1.5}main{display:grid;grid-template-columns:minmax(260px,1fr) 330px;gap:15px;padding:15px}aside{background:white;padding:14px;border-radius:8px}label{display:block;margin:9px 0}button,select,input{font:inherit;padding:8px;max-width:100%;margin:3px}button{cursor:pointer}button:disabled{cursor:default;opacity:.5}input[type=number]{width:125px}.viewport{overflow:auto;max-height:80vh;border:1px solid #bbb;background:#ddd}.stage{position:relative;line-height:0}.stage img,.stage svg{position:absolute;inset:0;width:100%;height:100%}.stage svg{touch-action:none;cursor:crosshair}.room{display:block;width:100%;text-align:left}.selected{outline:3px solid #285ac9}.small{font-size:13px}#status{white-space:pre-wrap;line-height:1.5}#status.error{color:#ad2323}@media(max-width:850px){main{grid-template-columns:1fr}}
+</style>
+<header><h1>Baiki kotak rujukan sebelum latihan</h1>
+<p>1. Pilih manifest V4. 2. Pilih PNG asal. 3. Pilih ruang dan lukis semula kotaknya mengikut muka dalam dinding. 4. Sahkan setiap kotak yang diubah, kemudian simpan fail pembetulan.</p>
+<label>Manifest asal <input id="manifest" type="file" accept=".json"></label>
+<label>PNG asal — boleh pilih beberapa fail sekali <input id="files" type="file" accept="image/png" multiple></label>
+<select id="imageSelect" aria-label="Imej pelan" disabled></select>
+<label>Zoom <input id="zoom" type="range" min="100" max="400" step="25" value="200"> <span id="zoomValue">200%</span></label>
+<p id="status" role="status">Fail diproses dalam pelayar sahaja; tiada muat naik rangkaian.</p>
+</header>
+<main><section><div class="viewport"><div class="stage"><img id="image" alt="Pelan asal"><svg id="overlay"></svg></div></div>
+<p class="small">Hijau putus-putus = kotak asal bagi ruang dipilih. Biru = kotak semasa. Kelabu = ruang lain. Klik dan seret dari sudut kiri atas lantai ke sudut kanan bawah. Pintu bukan ruang berasingan. Kotak ruang L perlu merangkumi keseluruhan kawasan L, walaupun kotak itu turut meliputi kawasan di luar kontur.</p></section>
+<aside><strong>Ruang pada imej ini</strong><div id="rooms"></div>
+<p id="selectedRoom"></p><p class="small">Koordinat di bawah ialah piksel pada PNG asal.</p>
+<label>Kiri <input id="left" type="number" step="0.1" disabled></label>
+<label>Atas <input id="top" type="number" step="0.1" disabled></label>
+<label>Kanan <input id="right" type="number" step="0.1" disabled></label>
+<label>Bawah <input id="bottom" type="number" step="0.1" disabled></label>
+<button id="apply" disabled>Gunakan koordinat</button>
+<button id="confirm" disabled>Sahkan kotak ini</button>
+<button id="restore" disabled>Pulihkan kotak asal</button>
+<p id="changeCount">0 kotak diubah</p><button id="save" disabled>Simpan pembetulan JSON</button>
+<p class="small">Fail asal tidak ditindih. Fail pembetulan akan digunakan oleh penjana V5 untuk mengemas kini single, pasangan ruang, semua ruang dan varian margin. Jika MANTIN diubah, skor lama perlu dikira semula dengan rujukan baharu.</p>
+</aside></main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),ns='http://www.w3.org/2000/svg';
+let manifest=null,manifestHash=null,selected=0,drawing=null;
+const loaded=new Map(),edits=new Map();
+const fields=['left','top','right','bottom'];
+function status(message,error=false){$('status').textContent=message;$('status').className=error?'error':'';}
+async function digest(bytes){if(!crypto.subtle)throw Error('Buka fail HTML ini dalam Edge atau Chrome pada komputer anda.');return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');}
+function currentId(){return $('imageSelect').value;}
+function meta(){return manifest.images[currentId()];}
+function rooms(){return manifest.cases.find(c=>c.image_id===currentId()&&c.kind==='multi').expected;}
+function key(){return currentId()+'|'+selected;}
+function currentBox(){return edits.get(key())?.after||rooms()[selected].bbox_2d;}
+function valid(b){return b.length===4&&b.every(Number.isFinite)&&0<=b[0]&&b[0]<b[2]&&b[2]<=1000&&0<=b[1]&&b[1]<b[3]&&b[3]<=1000;}
+function notifyChanges(){const values=[...edits.values()];$('changeCount').textContent=values.length+' kotak diubah · '+values.filter(e=>e.reviewed).length+' disahkan';$('save').disabled=!values.length||values.some(e=>!e.reviewed);}
+function rectangle(box,color,dashed=false){const m=meta(),node=document.createElementNS(ns,'rect');const b=[box[0]*m.width/1000,box[1]*m.height/1000,box[2]*m.width/1000,box[3]*m.height/1000];for(const[k,v]of Object.entries({x:b[0],y:b[1],width:b[2]-b[0],height:b[3]-b[1],fill:'none',stroke:color,'stroke-width':1,'vector-effect':'non-scaling-stroke'}))node.setAttribute(k,v);if(dashed)node.setAttribute('stroke-dasharray','5 3');$('overlay').append(node);}
+function overlay(preview=null){$('overlay').replaceChildren();if(!manifest||!loaded.has(currentId()))return;rooms().forEach((r,i)=>{if(i!==selected)rectangle(edits.get(currentId()+'|'+i)?.after||r.bbox_2d,'#929292');});rectangle(rooms()[selected].bbox_2d,'#258847',true);rectangle(preview||currentBox(),'#285ac9');}
+function controls(){const ready=!!manifest&&loaded.has(currentId());for(const id of [...fields,'apply','confirm','restore'])$(id).disabled=!ready;if(!ready)return;const m=meta(),b=currentBox();fields.forEach((id,i)=>{$(id).value=(b[i]*[m.width,m.height,m.width,m.height][i]/1000).toFixed(2);});$('selectedRoom').textContent=rooms()[selected].label+' · '+(edits.get(key())?.reviewed?'pembetulan disahkan':'semak sempadan');}
+function zoom(){if(!manifest)return;const factor=Number($('zoom').value)/100;$('zoomValue').textContent=$('zoom').value+'%';const m=meta();document.querySelector('.stage').style.width=(m.width*factor)+'px';document.querySelector('.stage').style.height=(m.height*factor)+'px';}
+function render(){drawing=null;$('rooms').replaceChildren();if(!manifest)return;const m=meta(),found=loaded.get(currentId());$('image').src=found?.url||'';$('image').hidden=!found;$('overlay').setAttribute('viewBox',`0 0 ${m.width} ${m.height}`);rooms().forEach((r,i)=>{const button=document.createElement('button');button.className='room'+(i===selected?' selected':'');button.textContent=(i+1)+'. '+r.label+(edits.has(currentId()+'|'+i)?' *':'');button.addEventListener('click',()=>{selected=i;render();});$('rooms').append(button);});zoom();controls();overlay();notifyChanges();status(found?'PNG disahkan sepadan dengan manifest. Pilih ruang dan lukis kotak lantainya.':'Pilih PNG bernama '+m.file+' untuk imej ini.');}
+function update(box){if(!valid(box))throw Error('Kotak mesti berada dalam imej dan mempunyai lebar/tinggi lebih daripada sifar.');const room=rooms()[selected];if(JSON.stringify(box)===JSON.stringify(room.bbox_2d))edits.delete(key());else edits.set(key(),{image_id:currentId(),image_sha256:meta().sha256,room_index:selected,label:room.label,before:[...room.bbox_2d],after:box,reviewed:false});render();}
+$('manifest').addEventListener('change',async()=>{try{const file=$('manifest').files[0];if(!file)return;const bytes=await file.arrayBuffer(),parsed=JSON.parse(new TextDecoder().decode(bytes));if(parsed.version!==4||parsed.units!=='relative_0_1000'||Object.keys(parsed.images).sort().join()!=='JKR70-B,JKR70-C,JKR70-D,MANTIN')throw Error('Pilih manifest-V4.json asal.');for(const id of Object.keys(parsed.images)){const cases=parsed.cases.filter(c=>c.image_id===id&&c.kind==='multi');if(cases.length!==1||cases[0].expected.length!==6||cases[0].expected.some(r=>typeof r.label!=='string'||!valid(r.bbox_2d)))throw Error('Rujukan enam ruang tidak sah: '+id);}const hash=await digest(bytes);for(const value of loaded.values())URL.revokeObjectURL(value.url);loaded.clear();edits.clear();manifest=parsed;manifestHash=hash;selected=0;$('imageSelect').replaceChildren();for(const id of ['JKR70-D','JKR70-C','JKR70-B','MANTIN']){const option=document.createElement('option');option.value=id;option.textContent=id;$('imageSelect').append(option);}$('imageSelect').disabled=false;render();}catch(e){status(e.message,true);}});
+$('files').addEventListener('change',async()=>{try{if(!manifest)throw Error('Pilih manifest dahulu.');const version=manifestHash;let count=0;for(const file of $('files').files){const entry=Object.entries(manifest.images).find(([,m])=>m.file===file.name);if(!entry)throw Error('Nama PNG tidak disenaraikan dalam manifest: '+file.name);const[id,m]=entry,url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();if(image.naturalWidth!==m.width||image.naturalHeight!==m.height)throw Error('Saiz PNG tidak sepadan: '+file.name);const canvas=document.createElement('canvas');canvas.width=m.width;canvas.height=m.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);const rgba=ctx.getImageData(0,0,m.width,m.height).data,prefix=new TextEncoder().encode(m.width+'x'+m.height+':'),rgb=new Uint8Array(prefix.length+m.width*m.height*3);rgb.set(prefix);for(let i=0,j=prefix.length;i<rgba.length;i+=4){rgb[j++]=rgba[i];rgb[j++]=rgba[i+1];rgb[j++]=rgba[i+2];}if(await digest(rgb)!==m.sha256)throw Error('Piksel PNG tidak sepadan dengan manifest: '+file.name);if(manifestHash!==version)throw Error('Manifest berubah semasa PNG dibaca. Pilih PNG sekali lagi.');if(loaded.has(id))URL.revokeObjectURL(loaded.get(id).url);loaded.set(id,{url});count++;}catch(e){URL.revokeObjectURL(url);throw e;}}render();status(count+' PNG disahkan. Pilih ruang yang perlu dibetulkan.');}catch(e){render();status(e.message,true);}});
+$('imageSelect').addEventListener('change',()=>{selected=0;render();});$('zoom').addEventListener('input',zoom);
+$('apply').addEventListener('click',()=>{try{if(fields.some(id=>$(id).value===''))throw Error('Isi keempat-empat koordinat.');const m=meta();update(fields.map((id,i)=>Math.round(Number($(id).value)*1000/[m.width,m.height,m.width,m.height][i])));}catch(e){status(e.message,true);}});
+$('confirm').addEventListener('click',()=>{const edit=edits.get(key());if(edit)edit.reviewed=true;controls();notifyChanges();status(edit?'Kotak pembetulan disahkan.':'Kotak ini masih sama dengan rujukan asal.');});
+$('restore').addEventListener('click',()=>{edits.delete(key());render();});
+function point(event){const r=$('overlay').getBoundingClientRect();return[Math.round(Math.max(0,Math.min(1000,(event.clientX-r.left)/r.width*1000))),Math.round(Math.max(0,Math.min(1000,(event.clientY-r.top)/r.height*1000)))];}
+$('overlay').addEventListener('pointerdown',event=>{if(event.button!==0||!manifest||!loaded.has(currentId()))return;event.preventDefault();drawing={start:point(event),key:key()};$('overlay').setPointerCapture(event.pointerId);});
+$('overlay').addEventListener('pointermove',event=>{if(!drawing)return;const p=point(event),s=drawing.start;overlay([Math.min(s[0],p[0]),Math.min(s[1],p[1]),Math.max(s[0],p[0]),Math.max(s[1],p[1])]);});
+$('overlay').addEventListener('pointerup',event=>{if(!drawing)return;const p=point(event),s=drawing.start,old=drawing.key;drawing=null;if(old!==key())return;try{update([Math.min(s[0],p[0]),Math.min(s[1],p[1]),Math.max(s[0],p[0]),Math.max(s[1],p[1])]);}catch(e){overlay();status(e.message,true);}});
+$('overlay').addEventListener('pointercancel',()=>{drawing=null;overlay();});
+$('save').addEventListener('click',()=>{if(!edits.size||[...edits.values()].some(e=>!e.reviewed))return;const patch={schema_version:1,units:'relative_0_1000',source_manifest_sha256:manifestHash,edits:[...edits.values()]},url=URL.createObjectURL(new Blob([JSON.stringify(patch,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='pembetulan-ruang-V5.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status('Fail pembetulan disimpan. Gunakannya dengan penjana V5 yang menyokong pembetulan; dataset lama belum berubah.');});
+</script></html>

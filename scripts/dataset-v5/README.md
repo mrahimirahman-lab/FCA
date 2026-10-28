@@ -48,3 +48,21 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python -m unittest discover -s scripts/da
 ```
 
 Tests create synthetic images through V4's producer. They verify round-trip compatibility, unchanged development tasks, geometry transforms/pixel preservation, pair targets, embedded Parquet images, split isolation, rejection paths and profile settings. They do **not** measure model accuracy or perform GPU training.
+
+## Repair reference boxes before training
+
+The green evaluator overlays are the **training reference**, not a model prediction. User inspection found incomplete TANDAS/BILIK 3 references. Adding training steps or padding does not repair those labels. Do not use the earlier generated V5 Parquet for further training until affected references have been reviewed and regenerated. Earlier per-room IoU against incorrect references is provisional.
+
+Open the standalone `review.html` locally in Edge/Chrome. Select the original V4 manifest and the original PNG files. The editor checks dimensions and canonical RGB pixel hashes, stays offline, supports zoom and pixel-coordinate entry or drawing a replacement rectangle, and requires confirmation of each changed box. Unchanged boxes retain draft status. Confirmed deltas are downloaded as `pembetulan-ruang-V5.json`; source files and the earlier Parquet are not modified by the editor.
+
+Regenerate into a **new output folder** using:
+
+```powershell
+& 'C:\pinokio\api\unsloth.git\env\Scripts\python.exe' prepare.py 'C:\path\FCA-V4-folder' 'C:\path\FCA-V5-R1-new-folder' --corrections 'C:\path\pembetulan-ruang-V5.json'
+```
+
+The Windows bootstrap also supports `-UseCorrections` (choose an existing patch) or `-ReviewReferences` (open the editor, then choose the exported patch before generating). Canceling the correction picker stops this workflow; it does not silently generate the uncorrected dataset.
+
+Patches must match the source manifest hash, image hash, room index, label and original box. Unreviewed, stale, duplicate, invalid or no-op changes are rejected before output is written. Corrections update single, multi, paired-room and margin targets together. Same-name kitchen queries retain their identity and update coarse positional qualifiers when necessary. Splits never change. Applied patches and per-image reference fingerprints are saved with the new dataset and exported evaluation reports.
+
+If MANTIN is untouched its evaluation targets remain unchanged. If its reference changes, do not compare newly computed scores directly with old 31.3%/34.7% scores: rescore the saved V4/BASE predictions against the corrected reference first. This applies to JKR70 references too. Partially corrected data must not be described as fully verified geometry. A new reference version does not mean a new independent evaluation drawing.

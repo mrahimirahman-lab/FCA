@@ -9,6 +9,7 @@ import io
 import json
 import math
 import random
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -114,10 +115,64 @@ def adjusted_prompt(case):
     raise ValueError("Varian latihan tidak menjangka label berulang dengan qualifier kedudukan.")
 
 
-def build(source, output):
+def apply_corrections(sources, source, path):
+    """Apply reviewed deltas to every task before generating any augmentation."""
+    patch = json.loads(path.read_text(encoding="utf-8"))
+    digest = hashlib.sha256((source / "manifest-V4.json").read_bytes()).hexdigest()
+    if (patch.get("schema_version") != 1 or patch.get("units") != "relative_0_1000"
+            or patch.get("source_manifest_sha256") != digest):
+        raise ValueError("Fail pembetulan bukan untuk manifest V4 asal ini.")
+    edits = patch.get("edits")
+    if not isinstance(edits, list) or not edits:
+        raise ValueError("Fail pembetulan mesti mengandungi sekurang-kurangnya satu kotak.")
+    changes = {}
+    for edit in edits:
+        name, index = edit.get("image_id"), edit.get("room_index")
+        if (name not in sources or isinstance(index, bool) or not isinstance(index, int)
+                or not 0 <= index < len(sources[name]["rooms"])):
+            raise ValueError("Imej atau indeks ruang pembetulan tidak sah.")
+        item = sources[name]
+        old = item["rooms"][index]
+        if (edit.get("image_sha256") != item["sha256"]
+                or edit.get("label") != old["label"] or edit.get("before") != old["bbox_2d"]
+                or edit.get("reviewed") is not True):
+            raise ValueError("Pembetulan mesti disahkan dan sepadan dengan imej/kotak asal.")
+        validate_box(edit.get("after"))
+        if edit["after"] == edit["before"] or (name, index) in changes:
+            raise ValueError("Kotak pembetulan berulang atau tidak berubah.")
+        changes[name, index] = list(edit["after"])
+    affected = sorted({name for name, _ in changes})
+    for name in affected:
+        item = sources[name]
+        mapping = {}
+        for index, room in enumerate(item["rooms"]):
+            key = room["label"], tuple(room["bbox_2d"])
+            if key in mapping:
+                raise ValueError("Dua ruang asal tidak dapat dibezakan dengan pasti.")
+            mapping[key] = {"label": room["label"],
+                            "bbox_2d": changes.get((name, index), list(room["bbox_2d"]))}
+        for case in item["cases"]:
+            case["expected"] = [mapping[r["label"], tuple(r["bbox_2d"])] for r in case["expected"]]
+            if case["kind"] == "single" and " yang terletak di bahagian " in case["prompt"]:
+                box = case["expected"][0]["bbox_2d"]
+                x, y = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+                qualifier = (" yang terletak di bahagian "
+                             + ("atas" if y < 333 else "bawah" if y > 666 else "tengah") + "-"
+                             + ("kiri" if x < 333 else "kanan" if x > 666 else "tengah") + " imej")
+                pattern = r" yang terletak di bahagian (?:atas|bawah|tengah)-(?:kiri|kanan|tengah) imej"
+                case["prompt"] = re.sub(pattern, qualifier, case["prompt"])
+                case["title"] = re.sub(pattern, qualifier, case["title"])
+        item["rooms"] = next(c["expected"] for c in item["cases"] if c["kind"] == "multi")
+    return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "source_manifest_sha256": digest, "affected_images": affected, "edits": edits}
+
+
+def build(source, output, corrections=None):
     from datasets import Dataset, Features, Image as DatasetImage, Value
 
     sources = read_sources(source)
+    review = apply_corrections(sources, source, corrections) if corrections else None
+    evaluation_unchanged = not review or "MANTIN" not in review["affected_images"]
     if output.exists():
         raise ValueError("Folder output sudah wujud. Pilih nama baharu supaya fail lama dikekalkan.")
     output.mkdir(parents=True)
@@ -173,6 +228,9 @@ def build(source, output):
                                           "prompt": prompt,
                                           "expected": [target(r) for r in item["rooms"]
                                                        if r["label"] in labels]})
+            images[image_id]["reference_sha256"] = hashlib.sha256(json.dumps(
+                next(c["expected"] for c in variant_cases if c["kind"] == "multi"),
+                sort_keys=True, separators=(",", ":")).encode()).hexdigest()
             for n, case in enumerate(variant_cases, 1):
                 # Preserve original case IDs (1–8) for comparisons with V4 reports.
                 case.update(id=image_id + "-" + str(n), image_id=image_id,
@@ -198,27 +256,43 @@ def build(source, output):
         Dataset.from_list(rows[split], features=features).to_parquet(str(output / filename))
     manifest = {"version": 5, "units": "relative_0_1000", "training_executed": False,
                 "source_manifest_sha256": hashlib.sha256((source / "manifest-V4.json").read_bytes()).hexdigest(),
-                "reference_status": "draft_visual_alignment_unchanged_from_V4",
+                "reference_status": ("partially_user_corrected_from_V4" if review else
+                                     "draft_visual_alignment_unchanged_from_V4"),
+                "corrections": review,
                 "evaluation_status": "reused_development_holdout_not_a_new_blind_test",
                 "train": {"rows": 90, "original_images": 3, "derived_images": 9,
                           "source_groups": 1, "tasks": {"single": 54, "multi": 9, "absent": 9, "pair": 18}},
                 "evaluation": {"rows": 8, "original_images": 1, "derived_images": 1,
-                               "source_groups": 1, "unchanged_from_V4": True},
+                               "source_groups": 1, "unchanged_from_V4": evaluation_unchanged},
                 "images": images, "cases": cases}
     (output / "manifest-V5.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     display_images = {}
     for key, meta in images.items():
         display_images[key] = {**meta, "url": "data:image/png;base64," + base64.b64encode(
             (output / meta["file"]).read_bytes()).decode()}
-    display = {"images": display_images, "cases": cases}
+    display = {"images": display_images, "cases": cases,
+               "reference_status": manifest["reference_status"]}
     template = Path(__file__).with_name("evaluator.html").read_text(encoding="utf-8")
     (output / "BUKA-UJIAN-V5.html").write_text(template.replace("__PAYLOAD__", json.dumps(
         display, ensure_ascii=False).replace("<", "\\u003c")), encoding="utf-8")
     (output / "FCA-V5-config.yaml").write_text(PROFILE, encoding="utf-8")
-    (output / "BACA-DAHULU.txt").write_text(INSTRUCTIONS, encoding="utf-8")
+    instructions = INSTRUCTIONS
+    if review:
+        (output / "pembetulan-digunakan.json").write_bytes(corrections.read_bytes())
+        instructions = ("PEMBETULAN RUJUKAN DIGUNAKAN: " + ", ".join(review["affected_images"])
+                        + ". Kotak lain masih rujukan draf. Skor lama pada imej yang berubah "
+                        "perlu dikira semula dengan rujukan baharu.\n\n" + instructions)
+    if not evaluation_unchanged:
+        instructions = instructions.replace("8 baris, MANTIN sama seperti V4",
+                                             "8 baris, MANTIN dengan rujukan dibetulkan")
+        instructions = instructions.replace(
+            "Uji MANTIN semua ruang dengan prompt yang tidak berubah. Bandingkan dengan V4 31.3% dan BASE 34.7% daripada ujian pengguna terdahulu.",
+            "Rujukan MANTIN berubah. Kira semula JSON ramalan BASE dan V4 dengan rujukan baharu sebelum membandingkan V5; skor lama tidak boleh dibandingkan terus.")
+    (output / "BACA-DAHULU.txt").write_text(instructions, encoding="utf-8")
     print("SIAP: " + str(output))
     print("90 tugasan, 9 varian daripada 3 imej JKR70 asal (satu drawing).")
-    print("8 tugasan MANTIN tidak berubah. Tiada model dilatih oleh skrip ini.")
+    print("Rujukan MANTIN " + ("tidak berubah." if evaluation_unchanged else "dibetulkan; kira semula skor lama."))
+    print("Tiada model dilatih oleh skrip ini.")
 
 
 PROFILE = """training:
@@ -271,8 +345,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Folder V4 yang mengandungi manifest dan PNG")
     parser.add_argument("output", type=Path, help="Folder baharu; fail lama tidak ditindih")
+    parser.add_argument("--corrections", type=Path, help="Fail pembetulan JSON daripada review.html")
     args = parser.parse_args()
     try:
-        build(args.source, args.output)
+        build(args.source, args.output, args.corrections)
     except (ValueError, KeyError, OSError) as error:
         parser.exit(1, str(error) + "\n")
